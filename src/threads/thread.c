@@ -92,6 +92,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  /* list를 추가할 경우, 이와같이 thread_init에서 list_init 작업을 거쳐야 한다. */
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -118,7 +119,9 @@ thread_start (void)
 }
 
 /* Called by the timer interrupt handler at each timer tick.
-   Thus, this function runs in an external interrupt context. */
+   Thus, this function runs in an external interrupt context. 
+   ticks가 TIME_SLICE보다 커지는 순간에 intr_yield_on_return() 이라는 interrupt가 실행된다.
+   이는, running 중인 thread에서 외부 개입에 의해 thread_yieldI()를 실행시켜 CPU 점유를 넘겨주게 한다. */
 void
 thread_tick (void) 
 {
@@ -214,7 +217,7 @@ void
 thread_block (void) 
 {
   ASSERT (!intr_context ());
-  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (intr_get_level () == INTR_OFF); // interrupt가 off된 상태에서 block 되어야 하므로, 이를 확인한다.
 
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
@@ -237,7 +240,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_push_back (&ready_list, &t->elem); // 현재는 round-robin 방식으로 elem을 list의 맨 뒤에 push 하고있다.
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -262,8 +265,8 @@ thread_current (void)
      have overflowed its stack.  Each thread has less than 4 kB
      of stack, so a few big automatic arrays or moderate
      recursion can cause stack overflow. */
-  ASSERT (is_thread (t));
-  ASSERT (t->status == THREAD_RUNNING);
+  ASSERT (is_thread (t)); // t가 thread를 제대로 받았는지, 즉, NULL 값인지 아닌지 확인
+  ASSERT (t->status == THREAD_RUNNING); // t가 실제로 running 되어야 하는 thread를 받았는지 확인한다.
 
   return t;
 }
@@ -308,7 +311,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_push_back (&ready_list, &cur->elem); // round- robin 방식이다.
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -345,6 +348,13 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+/*
+  1.thread_set_nice
+  2.thread_get_nice
+  3.thread_get_load_avg
+  4.thread_get_recent_cpu
+  함수는 project1 : 4BSD scheduler 구현 시 변경한다.
+  */
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
