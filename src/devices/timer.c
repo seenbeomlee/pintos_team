@@ -86,13 +86,21 @@ timer_elapsed (int64_t then)
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
+/** 1
+ * 기존 핀토스에 구현되어 있는 busy-waitng을 이용한 timer_sleep() 코드는 아래와 같다.
+ * ticks란 핀토스 내부에서 시간을 나타내기 위한 값으로, 부팅 이후에 일정한 시간마다 1씩 증가한다.
+ * 1 tick의 시간을 설정해 줄 수 있는데, 현재 핀토스의 1tick은
+ * #define TIMER_FREQ 100
+ * 으로 인해서 1ms로 설정되어 있다.
+ * 이에 따라, 운영체제는 1ms마다 timer interrupt를 실행시키고 ticks의 값을 1씩 증가시킨다.
+ */
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  int64_t start = timer_ticks (); // timer_ticks() 함수는 현재 ticks를 반환한다.
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
+  while (timer_elapsed (start) < ticks) // timer_elapsed(t)함수는 t 이후로 경과된 시간(ticks)을 반환한다.
     thread_yield ();
 }
 
@@ -167,6 +175,15 @@ timer_print_stats (void)
 }
 
 /* Timer interrupt handler. */
+/** 1
+ * 하나의 스레드를 실행시키다가 다른 스레드로 CPU의 소유권을 넘겨야 할 때 scheduling이 일어난다.
+ * 이 scheduling이 일어나는 순간은
+ * 1. thread_yield()
+ * 2. thread_block()
+ * 3. thread_exit()
+ * 함수가 실행될 때이다. 이 함수들은 현재 실행중인 스레드에서 호출해주어야 하는데,
+ * 실행중인 스레드가 이 함수들을 실행시키지 않고 계속 CPU 소유권을 가지는 것을 방지하기 위하여 time_interrupt를 활용한다.
+ */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {

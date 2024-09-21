@@ -109,6 +109,9 @@ thread_start (void)
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
+  /** 1
+	 * thread_create하는 순간 idle thread가 생성되고, 동시에 idle 함수가 실행된다.
+	 */
   thread_create ("idle", PRI_MIN, idle, &idle_started);
 
   /* Start preemptive thread scheduling. */
@@ -138,6 +141,12 @@ thread_tick (void)
     kernel_ticks++;
 
   /* Enforce preemption. */
+  /** 1
+	 * 이렇게 증가한 ticks가 TIME_SLICE(defined 4)보다 커지는 순간에 intr_yield_on_return()이라는 인터럽트가 실행된다.
+	 * 이 인터럽트는 결과적으로 thread_yield()를 실행시킨다.
+	 * 즉, 하나의 thread에서 scheduling 함수들이 호출되지 않더라도, time_interrupt에 의해서
+	 * 일정 시간(ticks >= TIME_SLICE)마다 자동으로 scheduling이 발생한다.
+	 */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 }
@@ -202,6 +211,12 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   /* Add to run queue. */
+/** 1
+	 * thread_unblock(), thread_yield, thread_create()의 경우 list_push_back이 list_insert_ordered로 수정되어야 한다.
+	 * thread_create()의 경우, 새로운 thread가 ready_list에 추가되지만, 
+   * thread_unblock() 함수를 포함하기 때문에 thread_unblock() 수정하면 thread_creat()도 같이 수정된다.
+   * 아래의 동작 때문에 당연히..
+	 */
   thread_unblock (t);
 
   return tid;
@@ -241,6 +256,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem); // 현재는 round-robin 방식으로 elem을 list의 맨 뒤에 push 하고있다.
+  // 이를 list_insert_ordered를 통해 priority scheduling을 해준다.
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -295,7 +311,7 @@ thread_exit (void)
   intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
-  schedule ();
+  schedule (); // running thread가 CPU를 양보한다.
   NOT_REACHED ();
 }
 
@@ -311,7 +327,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem); // round- robin 방식이다.
+    list_push_back (&ready_list, &cur->elem); // 현재는 round-robin 방식으로 elem을 list의 맨 뒤에 push 하고있다.
+    // 이를 list_insert_ordered를 통해 priority scheduling을 해준다.
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -348,13 +365,14 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
-/*
-  1.thread_set_nice
-  2.thread_get_nice
-  3.thread_get_load_avg
-  4.thread_get_recent_cpu
-  함수는 project1 : 4BSD scheduler 구현 시 변경한다.
-  */
+/** 1
+ * 각 값들을 변경할 시에는 interrupt의 방해를 받지 않도록 interrupt를 비활성화 해야 한다.
+ * 1.thread_set_nice
+ * 2.thread_get_nice
+ * 3.thread_get_load_avg
+ * 4.thread_get_recent_cpu
+ * 함수는 project1 : 4BSD scheduler 구현 시 변경한다.
+*/
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
@@ -400,6 +418,13 @@ idle (void *idle_started_ UNUSED)
 {
   struct semaphore *idle_started = idle_started_;
   idle_thread = thread_current ();
+/** 1
+  * idle thread는 한 번 schedule을 받고, 바로 sema_up을 하여 thread_start()의 마지막 sema_down을 풀어준다.
+  * thread_start가 작업을 끝내고 run_action()이 실행될 수 있도록 해주고, idle 자신은 block 된다.
+  * idle thread는 pintos에서 실행 가능한 thread가 하나도 없을 때, wake 되어 다시 작동하는데,
+  * 이는 CPU가 무조건 하나의 thread 는 실행하고 있는 상태를 만들기 위함이다.
+  * => 아마 0개에서 껐다 키는데 소모되는 자원보다 적어도 하나 이상을 계속 실행하고 있는 상태에서 소모되는 자원이 더 적기 때문일듯?
+*/
   sema_up (idle_started);
 
   for (;;) 
@@ -425,6 +450,15 @@ idle (void *idle_started_ UNUSED)
 }
 
 /* Function used as the basis for a kernel thread. */
+/** 1
+ * thread_func *function은 이 kernel이 실행할 함수를 가리킨다.
+ * void *aux는 보조 파라미터로, synchronization을 위한 semaphore 등이 들어온다.
+ * 여기서 실행시키는 function은 이 thread가 종료될 때까지 실행되는 main 함수이다.
+ * 즉, 이 function은 idle thread라고 불리는 thread를 하나 실행시키는데,
+ * 이 idle thread는 하나의 c 프로그램에서 하나의 main 함수 안에서 여러 함수의 호출이 이루어지는 것처럼,
+ * pintos kernel위에서 여러 thread들이 동시에 실행될 수 있도록 하는 단 하나의 main thread인 셈이다.
+ * pintos의 목적은, 이러한 idle thread 위에 여러 thread들이 동시에 실행될 수 있도록 만드는 것이다.
+ */
 static void
 kernel_thread (thread_func *function, void *aux) 
 {
@@ -503,6 +537,13 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
+/** 1
+  * 반환값을 보면, !list_empty일 때는, list_pop_front (&ready_list)를 하고 있다.
+  * 즉, ready_list의 맨 앞 항목을 반환하는 round-robin 방식을 채택하고 있다는 것을 알 수 있다.
+  * 이러한 방식은 우선순위 없이 ready_list에 들어온 순서대로 실행하여 가장 간단하지만,
+  * 제대로 된 우선순위 스케쥴링이 이루어지고 있지 않다고 할 수 있다.
+  * 이를 유지시키면서 priority scheduling을 구현할 수 있도록 -> ready_list에 push()할 때, priority 순서에 맞추어 push 하도록 한다.
+*/
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
@@ -562,13 +603,19 @@ thread_schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
-  struct thread *cur = running_thread ();
-  struct thread *next = next_thread_to_run ();
+  struct thread *cur = running_thread (); // 현재 실행중인 thread A를 반환한다.
+  struct thread *next = next_thread_to_run (); // 다음에 실행될 thread B를 반환한다.
   struct thread *prev = NULL;
 
-  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (intr_get_level () == INTR_OFF); // scheduling하는 동안에는 interrupt가 발생하면 안되기 때문에 INTR_OFF인지 확인한다.
+/** 1 
+ * 
+ * ASSERT (curr->status != THREAD_RUNNING); 
+ * thread A가 CPU 소유권을 thread B에게 넘겨주기 전에 running thread(A)는 그 상태를
+ * running 이외의 다른 상태로 바꾸어주는 작업이 선행되어 있어야 하고, 이를 확인하는 부분이다.
+ */
   ASSERT (cur->status != THREAD_RUNNING);
-  ASSERT (is_thread (next));
+  ASSERT (is_thread (next)); // next_thread_to_run()에 의해 올바른 thread가 return 되었는지 확인한다.
 
   if (cur != next)
     prev = switch_threads (cur, next);
@@ -589,6 +636,10 @@ allocate_tid (void)
   return tid;
 }
 
+
+/* ********** ********** ********** project 1 ********** ********** ********** */
+/* add new function */
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);

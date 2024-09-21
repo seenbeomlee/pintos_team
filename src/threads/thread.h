@@ -47,7 +47,7 @@ typedef int tid_t;
              |                                 |
              |                                 |
              |                                 |
-             +---------------------------------+
+             +---------------------------------+ // 아래로는 TCB (thread control block) 영역이다.
              |              magic              |
              |                :                |
              |                :                |
@@ -122,7 +122,7 @@ struct thread /* Owned by thread.c. TCB 영역의 구성 */
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-#ifdef USERPROG
+#ifdef USERPROG // for project 2
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
@@ -133,11 +133,24 @@ struct thread /* Owned by thread.c. TCB 영역의 구성 */
       이것은 threads/thread.c에 정의되어 stack overflow를 감지하는 데 사용되는 임의의 번호일 뿐이다.
       thread_current()는 running thread의 magic member가 THREAD_MAGIC 인지 체크한다. */
     unsigned magic;                     /* Detects stack overflow. */
-  };
+
+/* ********** ********** ********** project 1 ********** ********** ********** */
+/* add new element */
+
+};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
-   Controlled by kernel command-line option "-o mlfqs". */
+   Controlled by kernel command-line option "-o mlfqs". 
+  
+   thread_mlfqs가 true일 때는 advanced scheduler를,
+   false일 때는 기존의 priority scheduler를 사용하도록 구현한다.
+ 
+   4BSD 스케줄러는 multilevel feedback queue scheduler의 구성을 갖는다.
+   이러한 방식에서 ready queue가 여러 개 존재하고, 각각의 ready queue는 서로 다른 priority를 갖는다.
+   실행중이던 thread가 실행을 끝내면, 스케줄러는 가장 priority가 높음 ready queue에서부터 하나의 thread를 꺼내와 실행시키고,
+   해당 ready queue에 여러 thread가 잇는 경우 'round-robin' 방식으로 thread들을 실행시킨다. (우선순위 없이 FIFO) 
+*/
 extern bool thread_mlfqs;
 
 void thread_init (void);
@@ -170,5 +183,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/* ********** ********** ********** project 1 ********** ********** ********** */
+/* add new function */
 
 #endif /* threads/thread.h */
