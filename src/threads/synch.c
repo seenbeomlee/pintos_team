@@ -177,8 +177,8 @@ lock_init (struct lock *lock)
 {
   ASSERT (lock != NULL);
 
-  lock->holder = NULL;
-  sema_init (&lock->semaphore, 1);
+  lock->holder = NULL; // 처음 init되는 시점에서는 lock을 release (1->0)한 thread가 존재하지 않는다.
+  sema_init (&lock->semaphore, 1); // lock은 '1'로 초기화된 세마포어와 동일하다.
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
