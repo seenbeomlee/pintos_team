@@ -916,7 +916,8 @@ void remove_with_lock(struct list_elem *e, struct lock *lock) {
  * 1. lock_release ()를 실행하였을 경우, curr thread의 priority를 재설정(refresh)해야 한다.
  * 2. thread_set_priority ()에서 활용한다.
  */
-void update_priority (void) {
+void update_priority (void)
+{
   struct thread *cur = thread_current ();
 
   if (list_empty(&cur->donations)) {
@@ -924,6 +925,7 @@ void update_priority (void) {
   }
   // 허나, donations list에 thread가 남아있다면 thread 중에서 가장 높은 priority를 가져와서 삽입해야한다.
   else { // list_empty()라면, cur->priority = cur->init_priority 하면 끝임.
+    update_current_priority(cur);
     list_sort (&cur->donations, thread_compare_donate_priority, 0); // list_sort()는 priority가 가장 높은 thread를 고르기 위해 priority를 기준으로 내림차순 정렬한다. 
 
     // 그 후, 맨 앞의 thread(우선순위가 가장 큰)를 가져온다.
