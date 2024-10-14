@@ -56,9 +56,13 @@ docker run -it --rm --name pintos --mount type=bind,source=/Users/{사용자명}
 # 개별 테스트 돌리는 법
 reference : https://pintosiiith.wordpress.com/2012/10/01/running-test-cases-for-pintos-assignment/
 
-예시 : 
+예시 : 가령, threads 단위의 27tests 중에서 개별 테스트 1개만 독자적으로 돌리고자 한다면,
 
 $ make clean
+
+$ make
+
+$ cd build
 
 $ make tests/threads/alarm-multiple.result
 
