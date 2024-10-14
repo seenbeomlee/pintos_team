@@ -341,6 +341,11 @@ thread_exit (void)
   process_exit ();
 #endif
 
+	// /** project1-Advanced Scheduler */
+	// if (thread_mlfqs)
+	// 	list_remove(&thread_current()->all_elem);
+  // thread_mlfqs 일때만 list_remove(allelem)인 것 같은데, 안해도 test pass됨.
+
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
