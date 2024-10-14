@@ -838,8 +838,11 @@ void thread_update_wakeuptime(int64_t wakeup_time) {
 // alarm clock 구현
 bool
 thread_compare_wakeuptime (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
-  return list_entry (l, struct thread, elem)->wakeup_time
-       < list_entry (s, struct thread, elem)->wakeup_time;
+  struct thread *prev = list_entry (l, struct thread, elem);
+  struct thread *next = list_entry (s, struct thread, elem);
+
+  if(prev->wakeup_time > next->wakeup_time) return true;
+  else return false;
 }
 
 // priority schedulder(1) 구현
@@ -852,16 +855,22 @@ thread_compare_wakeuptime (const struct list_elem *l, const struct list_elem *s,
 // 즉, 우리가 만들어야 하는 order 비교함수 less(elem, e, aux)는 elem > e일 때 true를 반환하는 함수이다.
 bool
 thread_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
-  return list_entry (l, struct thread, elem)->priority
-       > list_entry (s, struct thread, elem)->priority;
+  struct thread *prev = list_entry (l, struct thread, elem);
+  struct thread *next = list_entry (s, struct thread, elem);
+
+  if(prev->priority > next->priority) return true;
+  else return false;
 }
 
 // priority inversion(donation) 구현
 // thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다. 
 bool
 thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
-  return list_entry (l, struct thread, donation_elem)->priority
-       > list_entry (s, struct thread, donation_elem)->priority;
+  struct thread *prev = list_entry (l, struct thread, donation_elem)->priority;
+  struct thread *next = list_entry (s, struct thread, donation_elem)->priority;
+
+  if(prev->priority > next->priority) return true;
+  else return false;
 }
 
 // priority schedulder(1) 구현
@@ -878,7 +887,7 @@ void
 thread_cpu_acquire (void)
 {
   if (list_empty (&ready_list)) return;
-  
+
   struct thread* thread_tester = list_entry (list_front (&ready_list), struct thread, elem);
   // priority1 < priority2 라면, priority2의 우선순위가 더 높음을 의미한다. 또한 이것이 list의 맨 앞에 추가된다.
   if (thread_current ()->priority < thread_tester->priority)
