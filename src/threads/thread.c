@@ -584,11 +584,11 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
-  enum intr_level old_level;
-
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
+
+  enum intr_level old_level;
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
@@ -863,22 +863,28 @@ thread_cpu_acquire (void)
 // priority inversion(donation) 구현
 // 자신의 priority를 필요한 lock을 점유하고 있는 thread에게 빌려주는 함수이다.
 // 주의할 점은, nested donation을 위해 하위에 연결된 모든 thread에 donation이 일어나야 한다는 것이다.
-void
-donate_priority (void) {
-  int depth; // nested의 최대 깊이를 지정해주기 위해 사용한다. max_depth == 8
-  struct thread *cur = thread_current ();
+void priority_donation (void) {
+  struct thread *current_thread = thread_current();
+  int max_depth = 8; // nested의 최대 깊이를 지정해주기 위해 사용한다. max_depth == 8
 
-  for (depth = 0; depth < 8; depth++){ // max_depth == 8
-    if (!cur->wait_on_lock) break; // thread의 wait_on_lock이 NULL이라면 더이상 donation을 진행할 필요가 없으므로 멈춘다.
-    /** 1
-		  * cur->wait_on_lock이 NULL이면 요청한 해당 lock을 acquire()할 수 있다는 말이다.
-		  * 그게 아니라면, 스레드가 lock에 걸려있다는 말이므로, 그 lock을 점유하고 있는 holder thread에게 priority를 넘겨주는 방식을
-		  * 최대 깊이 8의 스레드까지 반복한다.
-		  */
-    struct thread *holder = cur->wait_on_lock->holder;
-    holder->priority = cur->priority;
-    cur = holder;
+  donate_priority_recursive(current_thread, max_depth, 0);
+}
+
+void priority_donation_recursive (struct thread *cur, int max_depth, int level) {
+  if (level >= max_depth || cur->wait_on_lock == NULL) { 
+    return;
   }
+  struct thread *lock_holder = cur->wait_on_lock->holder;
+  if (lock_holder == NULL) { // thread의 wait_on_lock이 NULL이라면 더이상 donation을 진행할 필요가 없으므로 멈춘다.
+    return;
+  }
+/** 1
+  * cur->wait_on_lock이 NULL이면 요청한 해당 lock을 acquire()할 수 있다는 말이다.
+  * 그게 아니라면, 스레드가 lock에 걸려있다는 말이므로, 그 lock을 점유하고 있는 holder thread에게 priority를 넘겨주는 방식을
+  * 최대 깊이 8의 스레드까지 반복한다.
+  */
+  lock_holder->priority = cur->priority;
+  priority_donation_recursive(lock_holder, max_depth, level + 1);
 }
 
 // priority inversion(donation) 구현

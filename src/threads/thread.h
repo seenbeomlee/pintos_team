@@ -133,9 +133,8 @@ struct thread /* TCB 영역의 구성 */
   // thread가 현재 얻기 위해 기다리고 있는 lock으로, thread는 이 lock이 release 되기를 기다린다.
   // 즉, thread B가 얻기 위해 기다리는 lock을 현재 보유한 thread A에게 자신의 priority를 주는 것이므로, 이를 받은 thread A의 donations에 thread B가 기록된다.
   struct lock *wait_on_lock; 
-
   struct list donations; // 자신에게 priority를 나누어진 thread들의 list. 왜 thread들이냐면, Multiple donation 때문이다.
-  struct list_elem donation_elem; // 이 list를 관리하기 위한 element로, thread 구조체의 elem과 구분하여 사용한다.
+  struct list_elem donation_elem; // donations list를 관리하기 위한 element로, thread 구조체의 elem과 구분하여 사용한다.
 
 /** 1 advanced scheduler(mlfqs) 구현
  * 각 스레드는 이 스레드가 다른 스레드에 대해 어떠한 성질을 가지는지를 나타내는 정수의 nice 값을 가진다.

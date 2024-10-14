@@ -239,7 +239,15 @@ lock_acquire (struct lock *lock) // lock을 양도받고 싶어하는 thread가 
   // lock->holder는 현재 lock을 소유하고 있는 thread를 가리킨다.
   // lock_acquire()을 요청하는 thread가 실행되고 있다는 자체가 이미 lock을 가지고 있는 thread보다 우선순위가 높다는 뜻이기 때문에,
   // if(cur->priority > lock->holder->priority) 등의 비교 조건은 필요하지 않다.
-  if (lock->holder) { // lock을 점유하고 있는 thread가 있다면,
+  if (lock->holder == NULL) { // 현재 lock을 소유하고 있는 스레드가 없다면 해당하는 lock을 바로 차지하면 된다
+    // sema_down을 기점으로 이전은 lock을 얻기 전, 이후는 lock을 얻은 후이다.
+    // lock에 대한 요청이 들어오면, sema_down에서 일단 멈췄다가,
+    sema_down (&lock->semaphore);
+    // lock->holder = thread_current (); // 기존 코드는 lock이 사용가능하게 되면 자신이 다시 lock을 선점한다.
+
+    lock_cleaner(cur, lock);
+  }
+  else { // lock을 점유하고 있는 thread가 있다면,
     cur->wait_on_lock = lock; // lock_acquire를 호출한 현재 thread의 wait_on_lock에 lock을 추가한다.
     list_insert_ordered (&lock->holder->donations, &cur->donation_elem,
                         thread_compare_donate_priority, 0); // lock->holder의 donations list에 현재 thread를 추가한다.
@@ -248,17 +256,11 @@ lock_acquire (struct lock *lock) // lock을 양도받고 싶어하는 thread가 
       * mlfqs 스케줄러는 시간에 따라 priority가 재조정되므로 priority donation을 사용하지 않는다.
       * 따라서, lock_acquire에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
       */
-      donate_priority (); 
+      priority_donation (); 
     }
+    sema_down (&lock->semaphore);
+    lock_cleaner(cur, lock);
   }
-  // else -> 현재 lock을 소유하고 있는 스레드가 없다면 해당하는 lock을 바로 차지하면 된다
-  // sema_down을 기점으로 이전은 lock을 얻기 전, 이후는 lock을 얻은 후이다.
-  // lock에 대한 요청이 들어오면, sema_down에서 일단 멈췄다가,
-  sema_down (&lock->semaphore);
-  // lock->holder = thread_current (); // 기존 코드는 lock이 사용가능하게 되면 자신이 다시 lock을 선점한다.
-
-  cur->wait_on_lock = NULL; // lock을 점유했으니 wait_on_lock에서 제거
-  lock->holder = cur; // lock_release()를 호출할 수 있는 holder는 lock_acquire()을 호출한 thread가 된다.
   /** advanced scheduler (mlfqs) 구현 */
 }
 
@@ -333,6 +335,11 @@ lock_held_by_current_thread (const struct lock *lock)
   ASSERT (lock != NULL);
 
   return lock->holder == thread_current ();
+}
+
+void lock_cleaner(struct thread *cur, struct lock *cur_lock) {
+  cur->wait_on_lock = NULL; // lock을 점유했으니 wait_on_lock에서 제거
+  cur_lock->holder = cur; // lock_release()를 호출할 수 있는 holder는 lock_acquire()을 호출한 thread가 된다.
 }
 
 /** One semaphore in a list. */
