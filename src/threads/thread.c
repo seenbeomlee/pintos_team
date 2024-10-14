@@ -35,7 +35,6 @@ static struct list ready_list;
  * sleep state인 thread들만 보관하는 리스트를 만들어 관리한다.
  */
 static struct list sleep_list; /* block된 스레드를 저장할 공간 */
-static int64_t next_tick_to_awake; /* block된 스레드 중 가장 먼저 일어날 스레드가 일어날 시각 */
 
 /** List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
