@@ -603,6 +603,36 @@ init_thread (struct thread *t, const char *name, int priority)
   intr_set_level (old_level);
 }
 
+// static void
+// init_thread (struct thread *t, const char *name, int priority) {
+// 	ASSERT (t != NULL);
+// 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
+// 	ASSERT (name != NULL);
+
+// 	memset (t, 0, sizeof *t);
+// 	t->status = THREAD_BLOCKED;
+// 	strlcpy (t->name, name, sizeof t->name);
+// 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
+
+// 	/** project1-Advanced Scheduler */
+// 	if (thread_mlfqs) {
+// 		mlfqs_calculate_priority (t);
+// 		list_push_back(&all_list, &t->all_elem);
+// 	} else {
+// 		t->priority = priority;
+// 	}
+
+// 	t->wait_on_lock = NULL;
+// 	list_init(&t->donations); // thread의 donations list를 초기화한다.
+
+// 	t->magic = THREAD_MAGIC;
+
+// 	/** #Advanced Scheduler */
+// 	t->init_priority = t->priority;
+// 	t->nice = NICE_DEFAULT;
+// 	t->recent_cpu = RECENT_CPU_DEFAULT;
+// }
+
 /** Allocates a SIZE-byte frame at the top of thread T's stack and
    returns a pointer to the frame's base. */
 static void *
