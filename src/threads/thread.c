@@ -867,7 +867,7 @@ void priority_donation (void) {
   struct thread *current_thread = thread_current();
   int max_depth = 8; // nested의 최대 깊이를 지정해주기 위해 사용한다. max_depth == 8
 
-  donate_priority_recursive(current_thread, max_depth, 0);
+  priority_donation_recursive(current_thread, max_depth, 0);
 }
 
 void priority_donation_recursive (struct thread *cur, int max_depth, int level) {

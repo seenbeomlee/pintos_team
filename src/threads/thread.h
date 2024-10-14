@@ -222,7 +222,8 @@ void thread_cpu_acquire (void);
  * thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다.
  */
 bool thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
-void donate_priority (void);
+void priority_donation (void);
+void priority_donation_recursive (struct thread *cur, int max_depth, int level);
 void remove_with_lock (struct lock *lock);
 void refresh_priority (void);
 
