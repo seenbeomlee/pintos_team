@@ -210,6 +210,7 @@ int thread_get_load_avg (void);
 /** alarm clock */
 void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
+void thread_update_wakeuptime(int64_t ticks);
 
 /** priority scheduler (1) */
 // 여기에 const struct list_elem *l, const struct list_elem *s 해야 할 수도 있을 듯.

@@ -773,20 +773,11 @@ allocate_tid (void)
  * CPU가 항상 실행 상태를 유지하게 하기 위해서 idle 스레드는 sleep되지 않아야 한다.
  */
 void
-thread_sleep (int64_t wakeup_ticks)
+thread_sleep (int64_t wakeup_time)
 {
-  struct thread *cur;
   enum intr_level old_level;
-
-   old_level = intr_disable (); // interrupt off & get previous interrupt state(INTR_ON maybe)
-   cur = thread_current ();
-
-   ASSERT (cur != idle_thread); // CPU가 항상 실행 상태를 유지하게 하기 위해 idle thread는 sleep되지 않아야 한다.
-
-  cur->wakeup_time = wakeup_ticks; // 현재 running 중인 thread A가 일어날 시간을 저장
-  list_push_back (&sleep_list, &cur->elem); // sleep_list 에 추가한다.
-  thread_block (); //thread A를 block 상태로 변경한다.
-   
+  old_level = intr_disable (); // interrupt off & get previous interrupt state(INTR_ON maybe)
+  thread_update_wakeuptime (wakeup_time);
   intr_set_level (old_level); // interrupt on
 }
 
@@ -812,6 +803,15 @@ thread_awake (int64_t ticks)
     else 
       e = list_next(e); // 일어날 시간이 되지 않았다면 다음 thread로 이동한다.
   }
+}
+
+void thread_update_wakeuptime(int64_t wakeup_time) {
+  struct thread *cur;
+  cur = thread_current ();
+  ASSERT (cur != idle_thread); // CPU가 항상 실행 상태를 유지하게 하기 위해 idle thread는 sleep되지 않아야 한다.
+  cur->wakeup_time = wakeup_time; // 현재 running 중인 thread A가 일어날 시간을 저장
+  list_push_back (&sleep_list, &cur->elem); // sleep_list 에 추가한다.
+  thread_block (); //thread A를 block 상태로 변경한다.
 }
 
 // priority schedulder(1) 구현

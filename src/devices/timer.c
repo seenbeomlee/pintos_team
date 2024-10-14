@@ -99,11 +99,11 @@ timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks (); /* ticks란, PintOS 내부에서 시간을 나타내기 위한 값으로 부팅 이후에 일정한 시간마다 1씩 증가한다. */
   ASSERT (intr_get_level () == INTR_ON);
-  /* 
-    필요없어진 기존 코드 삭제 
-    timer_elased 함수는 특정시간 이후로 경과된 시간(ticks)을 반환한다.
-    즉, timer_elapsed(start)는 start 이후로 경과된 시간(ticks)을 반환한다.
-  */  
+  /** 
+    * 필요없어진 기존 코드 삭제 
+    * timer_elased 함수는 특정시간 이후로 경과된 시간(ticks)을 반환한다.
+    * 즉, timer_elapsed(start)는 start 이후로 경과된 시간(ticks)을 반환한다.
+    */  
   // while (timer_elapsed (start) < ticks) 
   // thread_yield ();
 
