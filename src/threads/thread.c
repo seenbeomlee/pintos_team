@@ -751,11 +751,12 @@ thread_schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
+  ASSERT (intr_get_level () == INTR_OFF); /* scheduling 도중에는 inturrupt가 발생하면 안되기에 INTR_OFF 인지 확인한다. */
+  
   struct thread *cur = running_thread (); /* 현재 실행중인 thread A를 반환한다. */
   struct thread *next = next_thread_to_run (); /* thread B (ready queue에서 다음에 실행될 thread를 반환함) */
   struct thread *prev = NULL; /* thread A가 CPU의 소유권을 thread B에게 넘겨준 후 thread A를 가리키는 포인터 */
 
-  ASSERT (intr_get_level () == INTR_OFF); /* scheduling 도중에는 inturrupt가 발생하면 안되기에 INTR_OFF 인지 확인한다. */
   ASSERT (cur->status != THREAD_RUNNING); /* CPU의 소유권을 넘겨주기 전에 running thread는 그 상태를 running 외로 변경헸어야 하고, 이를 확인한다. */
   ASSERT (is_thread (next)); /* next_thread_to_run()에 의해 올바른 next thread가 return 되었는지 확인한다. */
 
@@ -827,8 +828,7 @@ thread_awake (int64_t ticks)
 }
 
 void thread_update_wakeuptime(int64_t wakeup_time) {
-  struct thread *cur;
-  cur = thread_current ();
+  struct thread *cur = thread_current ();
   ASSERT (cur != idle_thread); // CPU가 항상 실행 상태를 유지하게 하기 위해 idle thread는 sleep되지 않아야 한다.
   cur->wakeup_time = wakeup_time; // 현재 running 중인 thread A가 일어날 시간을 저장
   list_insert_ordered (&sleep_list, &cur->elem, thread_compare_wakeuptime, NULL); // sleep_list wakeup_time에 따라 오름차순으로 추가한다.
@@ -841,7 +841,7 @@ thread_compare_wakeuptime (const struct list_elem *l, const struct list_elem *s,
   struct thread *prev = list_entry (l, struct thread, elem);
   struct thread *next = list_entry (s, struct thread, elem);
 
-  if(prev->wakeup_time > next->wakeup_time) return true;
+  if(prev->wakeup_time < next->wakeup_time) return true;
   else return false;
 }
 
