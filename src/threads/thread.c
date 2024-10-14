@@ -789,6 +789,9 @@ thread_sleep (int64_t wakeup_time)
 void
 thread_awake (int64_t ticks)
 {
+  enum intr_level old_level;
+  old_level = intr_disable();
+
   struct list_elem *e = list_begin (&sleep_list);
 
   /* sleep_list를 돌면서 일어날 시간이 지난 thread들을 찾아서 ready list로 옮겨주고, thread 상태를 ready state로 변경시킨다. */
@@ -800,8 +803,10 @@ thread_awake (int64_t ticks)
       thread_unblock(t); // 그 후, thread를 unblock한다.
     } 
     else 
-      e = list_next(e); // 일어날 시간이 되지 않았다면 다음 thread로 이동한다.
+      break;
   }
+
+  intr_set_level(old_level);
 }
 
 void thread_update_wakeuptime(int64_t wakeup_time) {
@@ -809,8 +814,15 @@ void thread_update_wakeuptime(int64_t wakeup_time) {
   cur = thread_current ();
   ASSERT (cur != idle_thread); // CPU가 항상 실행 상태를 유지하게 하기 위해 idle thread는 sleep되지 않아야 한다.
   cur->wakeup_time = wakeup_time; // 현재 running 중인 thread A가 일어날 시간을 저장
-  list_push_back (&sleep_list, &cur->elem); // sleep_list 에 추가한다.
+  list_insert_ordered (&sleep_list, &cur->elem, thread_compare_wakeuptime, NULL); // sleep_list wakeup_time에 따라 오름차순으로 추가한다.
   thread_block (); //thread A를 block 상태로 변경한다.
+}
+
+// alarm clock 구현
+bool
+thread_compare_wakeuptime (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
+  return list_entry (l, struct thread, elem)->wakeup_time
+       < list_entry (s, struct thread, elem)->wakeup_time;
 }
 
 // priority schedulder(1) 구현
@@ -822,8 +834,7 @@ void thread_update_wakeuptime(int64_t wakeup_time) {
 // if(less (elem, e, aux))가 elem > e인 순간에 break; 를 해주어야 한다.
 // 즉, 우리가 만들어야 하는 order 비교함수 less(elem, e, aux)는 elem > e일 때 true를 반환하는 함수이다.
 bool
-thread_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED)
-{
+thread_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
   return list_entry (l, struct thread, elem)->priority
        > list_entry (s, struct thread, elem)->priority;
 }
@@ -831,8 +842,7 @@ thread_compare_priority (const struct list_elem *l, const struct list_elem *s, v
 // priority inversion(donation) 구현
 // thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다. 
 bool
-thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED)
-{
+thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
   return list_entry (l, struct thread, donation_elem)->priority
        > list_entry (s, struct thread, donation_elem)->priority;
 }
