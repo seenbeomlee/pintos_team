@@ -866,8 +866,8 @@ thread_compare_priority (const struct list_elem *l, const struct list_elem *s, v
 // thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다. 
 bool
 thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED) {
-  struct thread *prev = list_entry (l, struct thread, donation_elem)->priority;
-  struct thread *next = list_entry (s, struct thread, donation_elem)->priority;
+  struct thread *prev = list_entry (l, struct thread, donation_elem);
+  struct thread *next = list_entry (s, struct thread, donation_elem);
 
   if(prev->priority > next->priority) return true;
   else return false;
