@@ -895,16 +895,19 @@ void priority_donation_recursive (struct thread *cur, int max_depth, int level) 
  * 그 후, thread H가 빌려주었던 priority를 지우고, 다음 priority로 재설정(refresh)해야 한다.
  */
 void
-remove_with_lock (struct lock *lock)
-{
+remove_donations_waitonlock (struct lock *lock) {
   struct list_elem *e;
   struct thread *cur = thread_current ();
 
   for (e = list_begin (&cur->donations); e != list_end (&cur->donations); e = list_next (e)){
-    struct thread *t = list_entry (e, struct thread, donation_elem);
-    if (t->wait_on_lock == lock) // wait_on_lock이 이번에 release하는 lock이라면, 해당 thread를 donation list에서 지운다.
-      list_remove (&t->donation_elem); // 모든 donations list와 관련된 작업에서는 elem이 아니라, donation_elem을 사용한다.
+    remove_with_lock(e, lock);
   }
+}
+
+void remove_with_lock(struct list_elem *e, struct lock *lock) {
+  struct thread *t = list_entry (e, struct thread, donation_elem);
+  if (t->wait_on_lock == lock) // wait_on_lock이 이번에 release하는 lock이라면, 해당 thread를 donation list에서 지운다.
+    list_remove (&t->donation_elem); // 모든 donations list와 관련된 작업에서는 elem이 아니라, donation_elem을 사용한다.
 }
 
 // priority inversion(donation) 구현
@@ -913,8 +916,7 @@ remove_with_lock (struct lock *lock)
  * 1. lock_release ()를 실행하였을 경우, curr thread의 priority를 재설정(refresh)해야 한다.
  * 2. thread_set_priority ()에서 활용한다.
  */
-void update_priority (void)
-{
+void update_priority (void) {
   struct thread *cur = thread_current ();
 
   if (list_empty(&cur->donations)) {
