@@ -670,6 +670,13 @@ next_thread_to_run (void)
     /* thread_create()함수에서도 새로운 thread가 ready_list에 추가되지만, thread_create() 함수 자체에서
        thread_unblock() 함수를 포함하고 있기 때문에 thread_unblock() 함수를 수정함으로써 동시에 처리된다. */
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    /** 1
+	    * 반환값을 보면, !list_empty일 때는, list_pop_front (&ready_list)를 하고 있다.
+	    * 즉, ready_list의 맨 앞 항목을 반환하는 round-robin 방식을 채택하고 있다는 것을 알 수 있다.
+	    * 이러한 방식은 우선순위 없이 ready_list에 들어온 순서대로 실행하여 가장 간단하지만,
+	    * 제대로 된 우선순위 스케쥴링이 이루어지고 있지 않다고 할 수 있다.
+	    * 이를 유지시키면서 priority scheduling을 구현할 수 있도록 -> ready_list에 push()할 때, priority 순서에 맞추어 push 하도록 한다.
+	    */
 }
 
 /** Completes a thread switch by activating the new thread's page
@@ -728,8 +735,8 @@ thread_schedule_tail (struct thread *prev)
 static void
 schedule (void) 
 {
-  struct thread *cur = running_thread (); /* thread A */
-  struct thread *next = next_thread_to_run (); /* thread B (ready queue에서 다음에 실행될 thread를 반환함)*/
+  struct thread *cur = running_thread (); /* 현재 실행중인 thread A를 반환한다. */
+  struct thread *next = next_thread_to_run (); /* thread B (ready queue에서 다음에 실행될 thread를 반환함) */
   struct thread *prev = NULL; /* thread A가 CPU의 소유권을 thread B에게 넘겨준 후 thread A를 가리키는 포인터 */
 
   ASSERT (intr_get_level () == INTR_OFF); /* scheduling 도중에는 inturrupt가 발생하면 안되기에 INTR_OFF 인지 확인한다. */
@@ -760,9 +767,11 @@ allocate_tid (void)
 
 /* new functions below */
 
-/* thread를 재우는 작업 */
-/* 일어날 시간을 저장한 다음에 재워야 할 thread를 sleep_list에 추가한다. */
-/* thread의 상태를 block state로 만든다. */
+/** 1
+ * 일어날 시간을 저장한 다음에 재워야 할 스레드를 sleep_list에 추가하고,
+ * 스레드 상태를 block state로 만들어 준다.
+ * CPU가 항상 실행 상태를 유지하게 하기 위해서 idle 스레드는 sleep되지 않아야 한다.
+ */
 void
 thread_sleep (int64_t wakeup_ticks)
 {
@@ -772,7 +781,7 @@ thread_sleep (int64_t wakeup_ticks)
    old_level = intr_disable (); // interrupt off & get previous interrupt state(INTR_ON maybe)
    cur = thread_current ();
 
-   ASSERT (cur != idle_thread); // CPU가 항상 실행 상태를 유지하게 하기 위해 idel thread는 sleep되지 않아야 한다.
+   ASSERT (cur != idle_thread); // CPU가 항상 실행 상태를 유지하게 하기 위해 idle thread는 sleep되지 않아야 한다.
 
   cur->wakeup_time = wakeup_ticks; // 현재 running 중인 thread A가 일어날 시간을 저장
   list_push_back (&sleep_list, &cur->elem); // sleep_list 에 추가한다.
@@ -781,7 +790,12 @@ thread_sleep (int64_t wakeup_ticks)
   intr_set_level (old_level); // interrupt on
 }
 
-/* block된 thread들이 일어날 시간이 되었을 때 깨우는 함수 */
+/** 1
+ * timer_sleep() 함수가 호출되면 thread가 block state로 들어간다.
+ * 이렇게 block된 thread들은 일어날 시간이 되었을 때 awake 되어야 한다.
+ * 1. sleep_list()를 돌면서 일어날 시간이 지난 thread들을 찾아서 ready_list로 옮겨주고,
+ * 2. thread state를 ready state로 변경시킨다.
+ */
 void
 thread_awake (int64_t ticks)
 {
@@ -816,6 +830,7 @@ thread_compare_priority (const struct list_elem *l, const struct list_elem *s, v
 }
 
 // priority inversion(donation) 구현
+// thread_compare_donate_priority 함수는 thread_compare_priority 의 역할을 donation_elem 에 대하여 하는 함수이다. 
 bool
 thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED)
 {
@@ -848,11 +863,16 @@ thread_test_preemption (void)
 // 주의할 점은, nested donation을 위해 하위에 연결된 모든 thread에 donation이 일어나야 한다는 것이다.
 void
 donate_priority (void) {
-  int depth;
+  int depth; // nested의 최대 깊이를 지정해주기 위해 사용한다. max_depth == 8
   struct thread *cur = thread_current ();
 
   for (depth = 0; depth < 8; depth++){ // max_depth == 8
     if (!cur->wait_on_lock) break; // thread의 wait_on_lock이 NULL이라면 더이상 donation을 진행할 필요가 없으므로 멈춘다.
+    /** 1
+		  * cur->wait_on_lock이 NULL이면 요청한 해당 lock을 acquire()할 수 있다는 말이다.
+		  * 그게 아니라면, 스레드가 lock에 걸려있다는 말이므로, 그 lock을 점유하고 있는 holder thread에게 priority를 넘겨주는 방식을
+		  * 최대 깊이 8의 스레드까지 반복한다.
+		  */
     struct thread *holder = cur->wait_on_lock->holder;
     holder->priority = cur->priority;
     cur = holder;
@@ -860,6 +880,12 @@ donate_priority (void) {
 }
 
 // priority inversion(donation) 구현
+/** 1
+ * thread curr에서 lock_release(B)를 수행한다.
+ * lock B를 사용하기 위해서 curr에 priority를 나누어 주었던 thread H는 priority를 빌려줘야 할 이유가 없다.
+ * donations list에서 thread H를 지워주어야 한다.
+ * 그 후, thread H가 빌려주었던 priority를 지우고, 다음 priority로 재설정(refresh)해야 한다.
+ */
 void
 remove_with_lock (struct lock *lock)
 {
@@ -874,6 +900,11 @@ remove_with_lock (struct lock *lock)
 }
 
 // priority inversion(donation) 구현
+/** 1
+ * init_priority와 donations list의 max_priority중 더 높은 값으로 curr->priority를 설정한다.
+ * 1. lock_release ()를 실행하였을 경우, curr thread의 priority를 재설정(refresh)해야 한다.
+ * 2. thread_set_priority ()에서 활용한다.
+ */
 void
 refresh_priority (void)
 {
@@ -882,20 +913,38 @@ refresh_priority (void)
   cur->priority = cur->init_priority; // donations list가 비어있을 때는 cur thread에 init_priority를 삽입해준다.
 
   // 허나, donations list에 thread가 남아있다면 thread 중에서 가장 높은 priority를 가져와서 삽입해야한다.
-  if (!list_empty (&cur->donations)) {
-    list_sort (&cur->donations, thread_compare_donate_priority, 0); // donations list를 내림차순으로 정렬한다.
+  if (!list_empty (&cur->donations)) { // list_empty()라면, cur->priority = cur->init_priority 하면 끝임.
+    list_sort (&cur->donations, thread_compare_donate_priority, 0); // list_sort()는 priority가 가장 높은 thread를 고르기 위해 priority를 기준으로 내림차순 정렬한다. 
 
     // 그 후, 맨 앞의 thread(우선순위가 가장 큰)를 가져온다.
     struct thread *front = list_entry (list_front (&cur->donations), struct thread, donation_elem);
     // init_priority와 비교하여 더 큰 priority를 삽입한다.
-    if (front->priority > cur->priority)
-      cur->priority = front->priority;
+    if (front->priority > cur->priority) // 만일, front->priority > cur->priority라면,
+      cur->priority = front->priority; // priority donation을 수행한다.
   }
 }
 
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
+/** 1
+ * 4BSD scheduler priority를 0 (PRI_MIN)부터 63(PRI_MAX)의 64개의 값으로 나눈다.
+ * 각 priority 별로 ready queue가 존재하므로 64개의 ready queue가 존재하며,
+ * priority 값이 커질수록 우선순위가 높아짐(먼저 실행됨)을 의미한다.
+ * => 다만, 구현의 한계로 인해 64개의 multiple-queue는 두지않고, priority를 재계산하기만 했다.
+ * 
+ * thread의 priority는 thread 생성 시에 초기화되고, 4 ticks의 시간이 흐를 때마다 모든 thread의 priority가 재계산된다.
+ * priority의 값을 계산하는 식은 아래와 같다.
+ * priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
+ * 
+ * recent_cpu 값은 이 thread가 최근에 cpu를 얼마나 사용하였는지를 나타내는 값으로, thread가 최근에 사용한 cpu 양이 많을수록 큰 값을 가진다.
+ * 이는 오래된 thread 일수록 우선순위를 높게 가져서(recent_cpu 값이 작아짐) 모든 thread들이 골고루 실행될 수 있게 한다.
+ * priority는 정수값을 가져야 하므로, 계산 시 소수점은 버림한다.
+ */
+
 // advanced scheduler(mlfqs) 구현
 // mlfqs_caculate_priority 함수는 priority를 계산한다.
-// idel_thread의 priority는 고정이므로 제외하고, fixed_point.h에서 만든 fp 연산 함수를 사용하여 priority를 구한다.
+// idle_thread의 priority는 고정이므로 제외하고, fixed_point.h에서 만든 fp 연산 함수를 사용하여 priority를 구한다.
 // 계산 결과의 소수점 부분은 버림하고, 정수의 priority로 설정한다.
 void
 mlfqs_calculate_priority (struct thread *t)
@@ -918,8 +967,13 @@ void mlfqs_calculate_recent_cpu (struct thread *t)
                   add_mixed (mult_mixed (load_avg, 2), 1)), t->recent_cpu), t->nice);
 }
 
-// mlfqs_calculate_load_avg 함수는 load_avg 값을 계산하는 함수이다.
-// load_avg 값은 thread 고유의 값이 아니라, system wide 값이기 때문에, idle_thread가 실행되는 경우에도 계산하여 준다.
+/** 1
+ * load_avg 값을 계산하는 함수이다.
+ * load_avg 값은 thread 고유의 값이 아니라 system wide한 값이기 때문에, idle_thread가 실행되는 경우에도 계산한다.
+ * ready_threads는 현재 시점에서 실행 가능한 thread의 수를 나타내므로,
+ * ready_list에 들어 있는 thread의 숫자에 현재 running thread 1개를 더한다.
+ * (이때, idle thread는 실행 가능한 thread에 포함시키지 않는다.)
+ */
 void
 mlfqs_calculate_load_avg (void)
 {
