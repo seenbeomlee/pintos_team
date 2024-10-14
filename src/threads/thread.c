@@ -462,7 +462,7 @@ thread_get_load_avg (void)
   enum intr_level old_level = intr_disable ();
   // pintos document의 지시대로 100을 곱한 후 정수형으로 만들고 반올림하여 반환한다.
   // 정수형 반환값에서 소수점 둘째 자리까지의 값을 확인할 수 있도록 하는 용도이다.
-  int load_avg_value = fp_to_int_round (mult_mixed (load_avg, 100));
+  int load_avg_value = FP_TO_INT_ROUND (MULT_MIXED (load_avg, 100));
   intr_set_level (old_level);
   return load_avg_value;
 }
@@ -474,7 +474,7 @@ thread_get_recent_cpu (void)
   enum intr_level old_level = intr_disable ();
   // pintos document의 지시대로 100을 곱한 후 정수형으로 만들고 반올림하여 반환한다.
   // 정수형 반환값에서 소수점 둘째 자리까지의 값을 확인할 수 있도록 하는 용도이다.
-  int recent_cpu = fp_to_int_round (mult_mixed (thread_current ()-> recent_cpu, 100));
+  int recent_cpu = FP_TO_INT_ROUND (MULT_MIXED (thread_current ()-> recent_cpu, 100));
   intr_set_level (old_level);
   return recent_cpu;
 }
@@ -962,7 +962,7 @@ mlfqs_calculate_priority (struct thread *t)
     return;
   }
 
-  t->priority = fp_to_int (add_mixed (div_mixed (t->recent_cpu, -4), PRI_MAX - t->nice * 2));
+  t->priority = FP_TO_INT_ZERO (ADD_MIXED (DIV_MIXED (t->recent_cpu, -4), PRI_MAX - t->nice * 2));
 }
 
 // mlfqs_calculate_recent_cpu 함수는 특정 thread의 priority를 계산하는 함수이다.
@@ -972,8 +972,8 @@ void mlfqs_calculate_recent_cpu (struct thread *t)
     return;
   }
 
-  t->recent_cpu = add_mixed (mult_fp (div_fp (mult_mixed (load_avg, 2), 
-                  add_mixed (mult_mixed (load_avg, 2), 1)), t->recent_cpu), t->nice);
+  t->recent_cpu = ADD_MIXED (MULT_FP (DIV_FP (MULT_MIXED (load_avg, 2), 
+                  ADD_MIXED (MULT_MIXED (load_avg, 2), 1)), t->recent_cpu), t->nice);
 }
 
 /** 1
@@ -998,8 +998,8 @@ mlfqs_calculate_load_avg (void)
     ready_threads = list_size (&ready_list) + 1;
   }
 
-  load_avg = add_fp (mult_fp (div_fp (int_to_fp (59), int_to_fp (60)), load_avg), 
-                     mult_mixed (div_fp (int_to_fp (1), int_to_fp (60)), ready_threads));
+  load_avg = ADD_FP (MULT_FP (DIV_FP (INT_TO_FP (59), INT_TO_FP (60)), load_avg), 
+                     MULT_MIXED (DIV_FP (INT_TO_FP (1), INT_TO_FP (60)), ready_threads));
 }
 
 // 각 값들이 변하는 시점에 수행할 함수를 만든다. 값들이 변화하는 시점은 3가지가 있다.
@@ -1014,7 +1014,7 @@ void
 mlfqs_increment_recent_cpu (void)
 {
   if (thread_current () != idle_thread) {
-    thread_current ()->recent_cpu = add_mixed (thread_current ()->recent_cpu, 1);
+    thread_current ()->recent_cpu = ADD_MIXED (thread_current ()->recent_cpu, 1);
   }
 } 
 
