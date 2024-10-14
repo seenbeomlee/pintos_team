@@ -225,7 +225,9 @@ bool thread_compare_donate_priority (const struct list_elem *l, const struct lis
 void priority_donation (void);
 void priority_donation_recursive (struct thread *cur, int max_depth, int level);
 void remove_with_lock (struct lock *lock);
-void refresh_priority (void);
+void update_priority (void);
+void update_current_priority(struct thread *cur);
+void test_update_current_priority(struct thread *front, struct thread *cur);
 
 /********** ********** ********** project 1 : advanced scheduler ********** ********** **********/
 /********** ********** ********** project 1 : advanced scheduler ********** ********** **********/

@@ -317,7 +317,7 @@ lock_release (struct lock *lock)
     * 따라서, lock_release에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
     */
     remove_with_lock (lock);
-    refresh_priority ();
+    update_priority ();
   }
   /** priority inversion(donations) 구현 */
 
