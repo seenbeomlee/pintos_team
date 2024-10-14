@@ -209,12 +209,12 @@ timer_interrupt (struct intr_frame *args UNUSED) {
   if (thread_mlfqs) { // 1 tick 마다 running thread의 recent_cpu 값 + 1
     mlfqs_increment_recent_cpu();
     if(ticks % 4 != 0) {
-      
+      // ticks가 4의 배수가 아닐 때
     }
     else {
       mlfqs_recalculate_priority();
       if(ticks % TIMER_FREQ != 0) {
-
+        // ticks가 100의 배수가 아닐 때
       }
       else {
         mlfqs_calculate_load_avg();
