@@ -57,6 +57,10 @@ sema_init (struct semaphore *sema, unsigned value)
    interrupt handler.  This function may be called with
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. */
+/** 1
+	* 공유자원(critical region)을 사용하고자 하는 thread는 sema_down을 실행하고,
+	* 사용 가능한 공유자원이 없다면 sema->waiters list에 list_push_back 함수로 맨 뒤에 추가된다. <- list_insert_ordered로 수정해야 하는 지점
+	*/
 void
 sema_down (struct semaphore *sema) 
 {
@@ -72,8 +76,11 @@ sema_down (struct semaphore *sema)
     {
       // 기존의 코드는 sema->waiters list에 list_push_back() 함수로 맨 뒤에 넣는다.
       // list_push_back (&sema->waiters, &thread_current ()->elem); 
-      list_insert_ordered (&sema->waiters, &thread_current ()->elem, thread_compare_priority, 0);
-      thread_block ();
+  /** 1
+   * semaphore에 추가되는 element들은 thread 이므로, thread.c에서 사용하였던 thread_compare_priority 함수를 그대로 사용하면 된다.
+   */
+    list_insert_ordered (&sema->waiters, &thread_current ()->elem, thread_compare_priority, 0);
+    thread_block ();
     }
   sema->value--;
   intr_set_level (old_level);
@@ -109,6 +116,12 @@ sema_try_down (struct semaphore *sema)
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+/** 1
+ * 현재는 공유자원의 사용을 마친 thread가 sema_up을 하면, thread_unblock을 하는데,
+ * list_pop_front() 로 인해서 sema->waiters list의 상단에 있는 waiter thread를 unblock 시킨다.
+ * 이를 ready_list의 round-robin을 해결하기 위해 적용했던 것처럼,
+ * sema_up에서 list_push_back() 하던 것을 list_insert_ordered()로 변경한다.
+ */
 void
 sema_up (struct semaphore *sema) 
 {
@@ -119,6 +132,10 @@ sema_up (struct semaphore *sema)
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) {
     // waiters list에 있던 동안 우선순위에 변경이 생겼을 수도 있으므로, waiters list를 내림차순으로 정렬하여 준다.
+  /** 1
+   * sema_down 했다가, sema_up 하는 동안 waiters_list에 있는 thread들의 priority에 변경이 생겼을 수도 있다.
+   * 따라서, waiters_list를 내림차순으로 정렬하여 준다. -> 이럴거면 sema_up할때 굳이 왜 list_insert_ordered 하는거지?
+   */
     list_sort (&sema->waiters, thread_compare_priority, 0);
     // 공유자원의 사용을 마친 thread가 sema_up을 하면 thread_unblock을 하는데,
     // list_pop_front 함수로 sema->waiters list의 맨 앞에서 꺼낸다.
@@ -126,7 +143,7 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   }
   sema->value++;
-  // unblock된 thread가 running thread보다 우선순위가 높을 수 있으므로, CPU 선점이 일어나게 해준다.
+// unblock된 thread가 running thread보다 priority가 높을 수 있으므로, thread_test_preemtion ()을 통해 CPU 선점이 일어나도록 한다.
   thread_test_preemption ();
   intr_set_level (old_level);
 }
@@ -187,8 +204,9 @@ void
 lock_init (struct lock *lock)
 {
   ASSERT (lock != NULL);
-
-  lock->holder = NULL;
+  // 처음 init되는 시점에서는 lock을 release (1->0)한 thread가 존재하지 않는다.
+	lock->holder = NULL;
+	// lock은 '1'로 초기화된 세마포어와 동일하다.
   sema_init (&lock->semaphore, 1);
 }
 
@@ -208,35 +226,42 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock) // lock을 양도받고 싶어하는 thread가 호출하는 함수이다.
 {
+/** 1
+  * lock_acquire()을 요청하는 스레드가 실행되고 있다는 자체로 lock을 가지고 있는 스레드보다 priority가 높다는 뜻이기 때문에,
+  * if(cur->priority > lock->holder->priority) 등의 비교조건은 필요하지 않다.
+  */
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
   
-  /**  priority donation 구현 */
+  /** priority donation 구현 */
   // sema_down에 들어가기 전에 lock을 가지고 있는 thread에게 priority를 양도하는 작업이 필요하다.
   struct thread *cur = thread_current ();
 
   // lock->holder는 현재 lock을 소유하고 있는 thread를 가리킨다.
   // lock_acquire()을 요청하는 thread가 실행되고 있다는 자체가 이미 lock을 가지고 있는 thread보다 우선순위가 높다는 뜻이기 때문에,
   // if(cur->priority > lock->holder->priority) 등의 비교 조건은 필요하지 않다.
-  if (lock->holder) { 
+  if (lock->holder) { // lock을 점유하고 있는 thread가 있다면,
     cur->wait_on_lock = lock; // lock_acquire를 호출한 현재 thread의 wait_on_lock에 lock을 추가한다.
     list_insert_ordered (&lock->holder->donations, &cur->donation_elem,
                         thread_compare_donate_priority, 0); // lock->holder의 donations list에 현재 thread를 추가한다.
     if (!thread_mlfqs) {  /**  advanced scheduler (mlfqs) 구현 */
-      // priority donation은 mlfqs scheduler에서는 사용하지 않는다.
-      // 왜냐하면, 시간에 따라 priority가 재조정되기 때문이다.
+    /** 1
+      * mlfqs 스케줄러는 시간에 따라 priority가 재조정되므로 priority donation을 사용하지 않는다.
+      * 따라서, lock_acquire에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
+      */
       donate_priority (); 
     }
   }
-
-  sema_down (&lock->semaphore); // lock에 대한 요청이 들어오면, sema_down에서 일단 멈췄다가,
+  // else -> 현재 lock을 소유하고 있는 스레드가 없다면 해당하는 lock을 바로 차지하면 된다
+  // sema_down을 기점으로 이전은 lock을 얻기 전, 이후는 lock을 얻은 후이다.
+  // lock에 대한 요청이 들어오면, sema_down에서 일단 멈췄다가,
+  sema_down (&lock->semaphore);
   // lock->holder = thread_current (); // 기존 코드는 lock이 사용가능하게 되면 자신이 다시 lock을 선점한다.
 
   cur->wait_on_lock = NULL; // lock을 점유했으니 wait_on_lock에서 제거
-  lock->holder = cur;
- /**  priority donation 구현 */
-
+  lock->holder = cur; // lock_release()를 호출할 수 있는 holder는 lock_acquire()을 호출한 thread가 된다.
+  /** advanced scheduler (mlfqs) 구현 */
 }
 
 /** Tries to acquires LOCK and returns true if successful or false
@@ -266,11 +291,18 @@ lock_try_acquire (struct lock *lock)
    handler. */
 // lock은 value == 1이고, holder 정보를 가지고 있다는 것을 제외하고는 semaphore와 동일하게 동작한다.
 // lock_release 함수는, semaphore와 달리, lock_acquire()을 호출한 thread만이 호출할 수 있다는 제약이 존재한다는 점에서 다르다.
+/** 1
+ * sema_up하여 lock의 점유를 반환하기 이전에
+ * 현재 이 lock을 사용하기 위해 나에게 priority를 빌려준 thread들을 donations list에서 제거하고,
+ * 나의 priority를 재설정하는 작업이 필요하다.
+ * 1. 남아있는 donations list에서 가장 높은 priority를 가지고 있는 thread의 priority를 받아서 cur의 priority로 설정하던가,
+ * 2. donations list == NULL 이라면, 원래 값인 init_priority로 설정해주면 된다.
+ */
 void
 lock_release (struct lock *lock) 
 {
   ASSERT (lock != NULL);
-  ASSERT (lock_held_by_current_thread (lock));
+  ASSERT (lock_held_by_current_thread (lock)); // lock이 semaphore와 다른 점은, lock_release()는 lock_holder만이 호출할 수 있다는 것이다.
 
   /** priority inversion(donations) 구현 */
   // lock->holder = NULL;
@@ -280,8 +312,10 @@ lock_release (struct lock *lock)
   // 이 lock을 사용하기 위해 나에게 priority를 빌려준 thread들을 donations list에서 제거하고,
   // priority를 재설정 해주는 작업이 필요하다.
   if (!thread_mlfqs) { /** advanced scheduler (mlfqs) 구현 */
-     // priority donation은 mlfqs에서는 비활성화 한다.
-    // 왜냐하면, mlfqs scheduler는 시간에 따라 priority가 재조정되기 때문이다.
+  /** 1
+    * mlfqs 스케줄러는 시간에 따라 priority가 재조정되므로 priority donation을 사용하지 않는다.
+    * 따라서, lock_release에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
+    */
     remove_with_lock (lock);
     refresh_priority ();
   }
@@ -363,6 +397,12 @@ cond_wait (struct condition *cond, struct lock *lock)
 
   // list_push_back 대신에 list_inserted_ordered 함수에 sema_compare_priority를 사용해서
   // 가장 높은 우선순위를 가진 thread가 묶여있는 semaphore가 가장 앞으로 오도록 내림차순으로 cond->waiters list에 push 한다.
+  /** 1
+	 * semaphore의 waiters는 thread들의 list 였다면,
+	 * condtion의 waiters는 semaphore들의 list 이다.
+	 * 이 역시도, cond_signal에서 list_pop_front 하므로, list_push_back()이 아니라, list_insert_ordered 해야한다.
+	 * 이때, 입력받는 인자는 이전과 달리 thread가 아니라, semaphore_elem 구조체이기 때문에 따로 함수를 선언해야 한다.
+	 */
   list_insert_ordered (&cond->waiters, &waiter.elem, sema_compare_priority, 0);
   lock_release (lock);
   sema_down (&waiter.semaphore);
@@ -386,7 +426,12 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters)) 
   {
-    // 앞선 경우와 마찬가지로, pop을 그대로 하되, wait 도중에 우선순위가 바뀌었을 수 있으니, list_sort로 내림차순으로 정렬해준다.
+  /** 1
+	  * cond->waiters는 semaphore들의 list이다. (즉 2중 list임)
+	  * 이때, semaphore list는 list_push_back()이 아니라, list_insert_ordered()를 통해 내림차순으로 정렬시켰다.
+	  * 따라서, waiter의 최상단에는 이미 각 semaphore waiters list 안에서 가장 priority가 높은 thread 가 놓여있다.
+	  */
+  // 앞선 경우와 마찬가지로, pop을 그대로 하되, wait 도중에 우선순위가 바뀌었을 수 있으니, list_sort로 내림차순으로 정렬해준다.
     list_sort (&cond->waiters, sema_compare_priority, 0);
     sema_up (&list_entry (list_pop_front (&cond->waiters),
                           struct semaphore_elem, elem)->semaphore);
@@ -410,7 +455,10 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 }
 
 /* new function below. */
-
+/** 1
+ * cond_wait()에서 list_push_back()이 아니라, list_insert_ordered() 하기 위해서 필요하다.
+ * 이때, cond_waiters는 thread들의 list가 아니라, semaphore들의 list이기 때문에, 새로운 비교 함수를 정의한다.
+ */
 bool
 sema_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED)
 {
@@ -419,7 +467,8 @@ sema_compare_priority (const struct list_elem *l, const struct list_elem *s, voi
 
   struct list *waiter_l_sema = &(l_sema->semaphore.waiters);
   struct list *waiter_s_sema = &(s_sema->semaphore.waiters);
-
-   return list_entry (list_begin (waiter_l_sema), struct thread, elem)->priority
+  
+  // l의 priority가 s의 priority보다 작다면 true를 반환하여야 priority를 기준으로 내림차순으로 정렬된다.
+  return list_entry (list_begin (waiter_l_sema), struct thread, elem)->priority
             > list_entry (list_begin (waiter_s_sema), struct thread, elem)->priority;
 }

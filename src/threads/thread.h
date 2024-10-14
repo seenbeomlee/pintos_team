@@ -238,8 +238,9 @@ void mlfqs_calculate_load_avg (void);
  * 3. 1초 마다 모든 thread의 recent_cpu 값과 load_avg 값 재계산
  * 각 함수를 해당하는 시간 주기마다 실행되도록 timer_interrupt ()를 바꾸어주면 된다.
  */
-void mlfqs_increment_recent_cpu (void);
-void mlfqs_recalculate_recent_cpu (void);
-void mlfqs_recalculate_priority (void);
+void mlfqs_increment_recent_cpu (void); // 현재 thread의 recent_cpu 값을 1 증가시키는 함수이다.
+void mlfqs_recalculate_recent_cpu (void); // 모든 thread의 recent_cpu를 재계산하는 함수이다.
+void mlfqs_recalculate_priority (void); // 모든 thread의 priority를 재계산하는 함수이다.
+
 
 #endif /**< threads/thread.h */
