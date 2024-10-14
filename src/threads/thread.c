@@ -401,20 +401,21 @@ thread_set_priority (int new_priority)
     return;
   }
   /** advanced scheduler (mlfqs) 구현 */
+  else {
+    /**  priority inversion(donation) 구현 */
+    // 만약, 현재 진행중인 running thread의 priority 변경이 일어났을 때,
+    // donations list들에 있는 thread들보다 priority가 높아지는 경우가 생길 수 있다.
+    // 이 경우, priority는 donations list 중 가장 높은 priority가 아니라, 새로 바뀐 priority가 적용될 수 있게 해야 한다.
+    // 이는 thread_set_priority에 refresh_priority() 함수를 추가하는 것으로 간단하게 가능하다.
+    // thread_current ()->priority = new_priority; 원래 존재하던 코드 priority -> init_priority로 변경.
+    thread_current ()->init_priority = new_priority;
+    refresh_priority ();
+    /**  priority inversion(donation) 구현 */
 
-  /**  priority inversion(donation) 구현 */
-  // 만약, 현재 진행중인 running thread의 priority 변경이 일어났을 때,
-  // donations list들에 있는 thread들보다 priority가 높아지는 경우가 생길 수 있다.
-  // 이 경우, priority는 donations list 중 가장 높은 priority가 아니라, 새로 바뀐 priority가 적용될 수 있게 해야 한다.
-  // 이는 thread_set_priority에 refresh_priority() 함수를 추가하는 것으로 간단하게 가능하다.
-  // thread_current ()->priority = new_priority; 원래 존재하던 코드 priority -> init_priority로 변경.
-  thread_current ()->init_priority = new_priority;
-  refresh_priority ();
-  /**  priority inversion(donation) 구현 */
-
-  /**  alarm clock 구현. */
-  thread_test_preemption (); // runnning thread의 priority 변경으로 인한 priority 재확인
-  /**  alarm clock 구현. */
+    /**  alarm clock 구현. */
+    thread_test_preemption (); // runnning thread의 priority 변경으로 인한 priority 재확인
+    /**  alarm clock 구현. */
+  }
 }
 
 /** Returns the current thread's priority. */
@@ -437,20 +438,28 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 { // 현재 thread의 nice 값을 새 값으로 설정한다.
-  enum intr_level old_level = intr_disable (); // 각 값들을 변경할 시에는 interrupt를 비활성화 해야한다.
-  thread_current ()->nice = nice;
-  mlfqs_calculate_priority (thread_current ());
+  enum intr_level old_level;
+  old_level = intr_disable (); // 각 값들을 변경할 시에는 interrupt를 비활성화 해야한다.
+
+  struct thread *cur = thread_current();
+  cur->nice = nice;
+  mlfqs_calculate_priority (cur);
   thread_test_preemption ();
+
   intr_set_level (old_level); // 다시 interrupt를 활성화 해준다.
-  
+  return;
 }
 
 /** Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 { // 현재 thread의 nice 값을 반환한다.
-  enum intr_level old_level = intr_disable ();
-  int nice = thread_current ()-> nice;
+  enum intr_level old_level;
+  old_level = intr_disable ();
+
+  struct thread *cur = thread_current();
+  int nice = cur-> nice;
+
   intr_set_level (old_level);
   return nice;
 }
@@ -459,10 +468,13 @@ thread_get_nice (void)
 int
 thread_get_load_avg (void) 
 { // 현재 system의 load_avg * 100 값을 반환한다.
-  enum intr_level old_level = intr_disable ();
+  enum intr_level old_level;
+  old_level = intr_disable ();
+
   // pintos document의 지시대로 100을 곱한 후 정수형으로 만들고 반올림하여 반환한다.
   // 정수형 반환값에서 소수점 둘째 자리까지의 값을 확인할 수 있도록 하는 용도이다.
   int load_avg_value = FP_TO_INT_ROUND (MULT_MIXED (load_avg, 100));
+
   intr_set_level (old_level);
   return load_avg_value;
 }
@@ -471,10 +483,12 @@ thread_get_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 { // 현재 thread의 recent_cpu * 100 값을 반환한다.
-  enum intr_level old_level = intr_disable ();
+  enum intr_level old_level;
+  old_level = intr_disable ();
   // pintos document의 지시대로 100을 곱한 후 정수형으로 만들고 반올림하여 반환한다.
   // 정수형 반환값에서 소수점 둘째 자리까지의 값을 확인할 수 있도록 하는 용도이다.
   int recent_cpu = FP_TO_INT_ROUND (MULT_MIXED (thread_current ()-> recent_cpu, 100));
+  
   intr_set_level (old_level);
   return recent_cpu;
 }
