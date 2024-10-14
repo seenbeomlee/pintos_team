@@ -668,16 +668,6 @@ allocate_tid (void)
 
 /* new functions below */
 
-/* next_tick_to_awake가 깨워야 할 스레드의 깨어날 tick값 중 가장 작은 tick을 갖도록 업데이트 함 */
-void update_next_tick_to_awake(int64_t ticks) {
-  next_tick_to_awake = (next_tick_to_awake > ticks) ? ticks : next_tick_to_awake;
-}
-
-/* 가장 먼저 일어나야할 스레드가 일어날 시각을 반환함 */
-int64_t get_next_tick_to_awake(void) {
-  return next_tick_to_awake;
-}
-
 /* thread를 재우는 작업 */
 /* 일어날 시간을 저장한 다음에 재워야 할 thread를 sleep_list에 추가한다. */
 /* thread의 상태를 block state로 만든다. */

@@ -86,13 +86,19 @@ timer_elapsed (int64_t then)
 
 /** Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-/* ticks란, PintOS 내부에서 시간을 나타내기 위한 값으로 부팅 이후에 일정한 시간마다 1씩 증가한다. */
+/**
+ * 기존 핀토스에 구현되어 있는 busy-waitng을 이용한 timer_sleep() 코드는 아래와 같다.
+ * ticks란 핀토스 내부에서 시간을 나타내기 위한 값으로, 부팅 이후에 일정한 시간마다 1씩 증가한다.
+ * 1 tick의 시간을 설정해 줄 수 있는데, 현재 핀토스의 1tick은
+ * #define TIMER_FREQ 100
+ * 으로 인해서 1ms로 설정되어 있다.
+ * 이에 따라, 운영체제는 1ms마다 timer interrupt를 실행시키고 ticks의 값을 1씩 증가시킨다.
+ */
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  int64_t start = timer_ticks (); /* ticks란, PintOS 내부에서 시간을 나타내기 위한 값으로 부팅 이후에 일정한 시간마다 1씩 증가한다. */
   ASSERT (intr_get_level () == INTR_ON);
-
   /* 
     필요없어진 기존 코드 삭제 
     timer_elased 함수는 특정시간 이후로 경과된 시간(ticks)을 반환한다.
@@ -105,8 +111,6 @@ timer_sleep (int64_t ticks)
   // timer_sleep() 함수가 호출되면 thread가 block 상태로 들어간다. 
   // 이렇게 block 된 thread 들은 일어날 시간이 되었을 때 awake 되어야 한다. 
   thread_sleep(start + ticks); 
-  
-
 }
 
 /** Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -180,6 +184,15 @@ timer_print_stats (void)
 }
 
 
+/** Scheduling
+ * 하나의 스레드를 실행시키다가 다른 스레드로 CPU의 소유권을 넘겨야 할 때 scheduling이 일어난다.
+ * 이 scheduling이 일어나는 순간은
+ * 1. thread_yield()
+ * 2. thread_block()
+ * 3. thread_exit()
+ * 함수가 실행될 때이다. 이 함수들은 현재 실행중인 스레드에서 호출해주어야 하는데,
+ * 실행중인 스레드가 이 함수들을 실행시키지 않고 계속 CPU 소유권을 가지는 것을 방지하기 위하여 time_interrupt를 활용한다.
+ */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++; // 매 tick마다 ticks라는 변수를 증가시킴으로써 시간을 잰다.
@@ -195,18 +208,15 @@ timer_interrupt (struct intr_frame *args UNUSED) {
  */
 	/** project1-Advanced Scheduler */	
     if (thread_mlfqs) { // 1 tick 마다 running thread의 recent_cpu 값 + 1
-        mlfqs_increment_recent_cpu();
-
-        if (!(ticks % 4)) {
-            mlfqs_recalculate_priority(); // 4 tick 마다 모든 thread의 priority 재계산
-
-            if (!(ticks % TIMER_FREQ)) { // 1초 마다 모든 thread의 recent_cpu값과 load_avg값 재계산
-                mlfqs_calculate_load_avg();
-                mlfqs_recalculate_recent_cpu();
-            }
-        }
+      mlfqs_increment_recent_cpu();
+      if (!(ticks % 4)) {
+        mlfqs_recalculate_priority(); // 4 tick 마다 모든 thread의 priority 재계산
+      if (!(ticks % TIMER_FREQ)) { // 1초 마다 모든 thread의 recent_cpu값과 load_avg값 재계산
+        mlfqs_calculate_load_avg();
+        mlfqs_recalculate_recent_cpu();
+      }
     }
-
+  }
 	thread_awake (ticks); // ticks가 증가할때마다 awake 작업을 수행한다.
 }
 
