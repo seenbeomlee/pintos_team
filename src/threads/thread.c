@@ -352,7 +352,7 @@ thread_exit (void)
   intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
-  schedule ();
+  schedule (); // running thread가 CPU를 양보한다.
   NOT_REACHED ();
 }
 
@@ -371,7 +371,7 @@ thread_yield (void)
     // list_push_back (&ready_list, &cur->elem); 이는 round-robin 방식에 사용되는 단순 list_push_back() 함수이다.
     list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, 0);
   cur->status = THREAD_READY;
-  schedule ();
+  schedule (); // running thread가 CPU를 양보한다.
   intr_set_level (old_level);
 }
 
@@ -414,7 +414,7 @@ thread_set_priority (int new_priority)
   /**  priority inversion(donation) 구현 */
 
   /**  alarm clock 구현. */
-  thread_test_preemption ();
+  thread_test_preemption (); // runnning thread의 priority 변경으로 인한 priority 재확인
   /**  alarm clock 구현. */
 }
 
@@ -426,8 +426,13 @@ thread_get_priority (void)
 }
 
 /** advanced scheduler (mlfqs) 구현 */
-// thread_set_nice, thread_get_load_avg, thread_get_load_avg, thread_get_recent_cpu
-// 각 값들을 변경할 시에는 interrupt의 방해를 받지 않도록, interrupt를 비활성화 해야한다.
+/** 1
+ * 각 값들을 변경할 시에는 interrupt의 방해를 받지 않도록 interrupt를 비활성화 해야 한다.
+ * 1. void thread_set_nice (int);
+ * 2. int thread_get_nice (void);
+ * 3. int thread_get_load_avg (void);
+ * 4. thread_get_recent_cpu (void);
+ */
 
 /** Sets the current thread's nice value to NICE. */
 void
@@ -491,6 +496,13 @@ idle (void *idle_started_ UNUSED)
 {
   struct semaphore *idle_started = idle_started_;
   idle_thread = thread_current ();
+/** 1
+ * idle thread는 한 번 schedule을 받고, 바로 sema_up을 하여 thread_start()의 마지막 sema_down을 풀어준다.
+ * thread_start가 작업을 끝내고 run_action()이 실행될 수 있도록 해주고, idle 자신은 block 된다.
+ * idle thread는 pintos에서 실행 가능한 thread가 하나도 없을 때, wake 되어 다시 작동하는데,
+ * 이는 CPU가 무조건 하나의 thread 는 실행하고 있는 상태를 만들기 위함이다.
+ * => 아마 껐다 키는데 소모되는 자원보다 하나를 실행하고 있는 상태에서 소모되는 자원이 더 적기 때문일듯?
+ */
   sema_up (idle_started);
 
   for (;;) 
@@ -516,6 +528,15 @@ idle (void *idle_started_ UNUSED)
 }
 
 /** Function used as the basis for a kernel thread. */
+/** 1
+ * thread_func *function은 이 kernel이 실행할 함수를 가리킨다.
+ * void *aux는 보조 파라미터로, synchronization을 위한 semaphore 등이 들어온다.
+ * 여기서 실행시키는 function은 이 thread가 종료될 때까지 실행되는 main 함수이다.
+ * 즉, 이 function은 idle thread라고 불리는 thread를 하나 실행시키는데,
+ * 이 idle thread는 하나의 c 프로그램에서 하나의 main 함수 안에서 여러 함수의 호출이 이루어지는 것처럼,
+ * pintos kernel위에서 여러 thread들이 동시에 실행될 수 있도록 하는 단 하나의 main thread인 셈이다.
+ * pintos의 목적은, 이러한 idle thread 위에 여러 thread들이 동시에 실행될 수 있도록 만드는 것이다.
+ */
 static void
 kernel_thread (thread_func *function, void *aux) 
 {
