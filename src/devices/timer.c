@@ -198,17 +198,16 @@ timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++; // 매 tick마다 ticks라는 변수를 증가시킴으로써 시간을 잰다.
 	thread_tick ();
 
-/** 1
+/** 1 Advanced Scheduler
  * 1. 1 tick 마다 running thread의 recent_cpu 값 + 1
  * 2. 4 ticks 마다 모든 thread의 priority 재계산
  * 3. 1초 마다 모든 thread의 recent_cpu 값과 load_avg 값 재계산
  * 각 함수를 해당하는 시간 주기마다 실행되도록 timer_interrupt ()를 바꾸어주면 된다.
  * TIMER_FREQ 값은 1초에 몇 개의 ticks 이 실행되는지를 나타내는 값으로 thread.h 에 100 으로 정의되어 있다. 
  * 이에 따라 pintos kernel 은 1 초에 100 ticks 가 실행되고 1 ticks = 1 ms 를 의미한다.
- */
-	/** project1-Advanced Scheduler */	
-    if (thread_mlfqs) { // 1 tick 마다 running thread의 recent_cpu 값 + 1
-      mlfqs_increment_recent_cpu();
+ */	
+  if (thread_mlfqs) { // 1 tick 마다 running thread의 recent_cpu 값 + 1
+    mlfqs_increment_recent_cpu();
       if (!(ticks % 4)) {
         mlfqs_recalculate_priority(); // 4 tick 마다 모든 thread의 priority 재계산
       if (!(ticks % TIMER_FREQ)) { // 1초 마다 모든 thread의 recent_cpu값과 load_avg값 재계산
@@ -217,7 +216,11 @@ timer_interrupt (struct intr_frame *args UNUSED) {
       }
     }
   }
-	thread_awake (ticks); // ticks가 증가할때마다 awake 작업을 수행한다.
+/** 1 Advanced Scheduler */
+/** 1 alarm clock 
+ * ticks가 증가할때마다 thread_awake 작업을 수행한다.
+ */
+	thread_awake (ticks); 
 }
 
 /** Returns true if LOOPS iterations waits for more than one timer

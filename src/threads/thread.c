@@ -958,22 +958,22 @@ refresh_priority (void)
 void
 mlfqs_calculate_priority (struct thread *t)
 {
-  if (t == idle_thread) {
-    return;
+  if (t != idle_thread) {
+    t->priority = FP_TO_INT_ZERO (ADD_MIXED (DIV_MIXED (t->recent_cpu, -4), PRI_MAX - t->nice * 2));
   }
-
-  t->priority = FP_TO_INT_ZERO (ADD_MIXED (DIV_MIXED (t->recent_cpu, -4), PRI_MAX - t->nice * 2));
+  else
+    return;
 }
 
 // mlfqs_calculate_recent_cpu 함수는 특정 thread의 priority를 계산하는 함수이다.
 void mlfqs_calculate_recent_cpu (struct thread *t)
 {
-  if (t == idle_thread) {
-    return;
-  }
-
+  if (t != idle_thread) {
   t->recent_cpu = ADD_MIXED (MULT_FP (DIV_FP (MULT_MIXED (load_avg, 2), 
-                  ADD_MIXED (MULT_MIXED (load_avg, 2), 1)), t->recent_cpu), t->nice);
+      ADD_MIXED (MULT_MIXED (load_avg, 2), 1)), t->recent_cpu), t->nice);
+  }
+  else
+    return;
 }
 
 /** 1
@@ -1002,6 +1002,7 @@ mlfqs_calculate_load_avg (void)
                      MULT_MIXED (DIV_FP (INT_TO_FP (1), INT_TO_FP (60)), ready_threads));
 }
 
+/** 1 Advanced Scheduler */
 // 각 값들이 변하는 시점에 수행할 함수를 만든다. 값들이 변화하는 시점은 3가지가 있다.
 // (1) 1 tick마다 running thread의 recent_cpu 값 + 1
 // (2) 4 tick마다 모든 thread의 priority 값 재계산
@@ -1013,9 +1014,10 @@ mlfqs_calculate_load_avg (void)
 void
 mlfqs_increment_recent_cpu (void)
 {
-  if (thread_current () != idle_thread) {
+  if(thread_current () == idle_thread)
+    return;
+  else
     thread_current ()->recent_cpu = ADD_MIXED (thread_current ()->recent_cpu, 1);
-  }
 } 
 
 // 모든 thread의 recent_cpu를 재계산하는 함수이다.
@@ -1041,6 +1043,7 @@ mlfqs_recalculate_priority (void)
     mlfqs_calculate_priority (t);
   }
 }
+/** 1 Advanced Scheduler */
 
 /** Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
