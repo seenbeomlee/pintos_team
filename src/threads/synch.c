@@ -64,24 +64,24 @@ sema_init (struct semaphore *sema, unsigned value)
 void
 sema_down (struct semaphore *sema) 
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
 
+  enum intr_level old_level;
   old_level = intr_disable ();
-  while (sema->value == 0) 
+
+  while (sema->value == 0) {
   // 공유자원을 사용하고자 하는 thread는 sema_down을 실행한다.
   // 사용가능한 공유자원이 없는 sema->value == 0인 상태라면, 
-    {
-      // 기존의 코드는 sema->waiters list에 list_push_back() 함수로 맨 뒤에 넣는다.
-      // list_push_back (&sema->waiters, &thread_current ()->elem); 
+  
+  // 기존의 코드는 sema->waiters list에 list_push_back() 함수로 맨 뒤에 넣는다.
+  // list_push_back (&sema->waiters, &thread_current ()->elem);  
   /** 1
    * semaphore에 추가되는 element들은 thread 이므로, thread.c에서 사용하였던 thread_compare_priority 함수를 그대로 사용하면 된다.
    */
     list_insert_ordered (&sema->waiters, &thread_current ()->elem, thread_compare_priority, 0);
     thread_block ();
-    }
+  }
   sema->value--;
   intr_set_level (old_level);
 }
@@ -125,9 +125,8 @@ sema_try_down (struct semaphore *sema)
 void
 sema_up (struct semaphore *sema) 
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
+  enum intr_level old_level;
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) {
@@ -139,8 +138,7 @@ sema_up (struct semaphore *sema)
     list_sort (&sema->waiters, thread_compare_priority, 0);
     // 공유자원의 사용을 마친 thread가 sema_up을 하면 thread_unblock을 하는데,
     // list_pop_front 함수로 sema->waiters list의 맨 앞에서 꺼낸다.
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+    thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
   }
   sema->value++;
 // unblock된 thread가 running thread보다 priority가 높을 수 있으므로, thread_cpu_acquire ()을 통해 CPU 선점이 일어나도록 한다.
@@ -378,14 +376,14 @@ cond_init (struct condition *cond)
 void
 cond_wait (struct condition *cond, struct lock *lock) 
 {
-  // semaphore는 waiters가 thread들의 list 였지만,
-  // condition vaiables의 waiters는 semaphore들의 list 이다.
-  struct semaphore_elem waiter;
-
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
+
+  // semaphore는 waiters가 thread들의 list 였지만,
+  // condition vaiables의 waiters는 semaphore들의 list 이다.
+  struct semaphore_elem waiter;
   
   sema_init (&waiter.semaphore, 0);
   // conditions variables에 묶여있는 여러 semaphore들의 list 중에서 가장 우선순위가 높음 하나의 semaphore를 깨워야 한다.
@@ -424,8 +422,8 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
-  {
+  if(list_empty (&cond->waiters)) return;
+  else {
   /** 1
 	  * cond->waiters는 semaphore들의 list이다. (즉 2중 list임)
 	  * 이때, semaphore list는 list_push_back()이 아니라, list_insert_ordered()를 통해 내림차순으로 정렬시켰다.
@@ -433,8 +431,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 	  */
   // 앞선 경우와 마찬가지로, pop을 그대로 하되, wait 도중에 우선순위가 바뀌었을 수 있으니, list_sort로 내림차순으로 정렬해준다.
     list_sort (&cond->waiters, sema_compare_priority, 0);
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+    sema_up (&list_entry (list_pop_front (&cond->waiters), struct semaphore_elem, elem)->semaphore);
   }
 }
 
@@ -468,7 +465,9 @@ sema_compare_priority (const struct list_elem *l, const struct list_elem *s, voi
   struct list *waiter_l_sema = &(l_sema->semaphore.waiters);
   struct list *waiter_s_sema = &(s_sema->semaphore.waiters);
   
+  struct thread *prev_sema_waiters = list_entry (list_begin (waiter_l_sema), struct thread, elem);
+  struct thread *next_sema_waiters = list_entry (list_begin (waiter_s_sema), struct thread, elem);
   // l의 priority가 s의 priority보다 작다면 true를 반환하여야 priority를 기준으로 내림차순으로 정렬된다.
-  return list_entry (list_begin (waiter_l_sema), struct thread, elem)->priority
-            > list_entry (list_begin (waiter_s_sema), struct thread, elem)->priority;
+  if (prev_sema_waiters->priority > next_sema_waiters->priority) return true;
+  else return false;
 }
