@@ -216,7 +216,7 @@ bool thread_compare_wakeuptime (const struct list_elem *l, const struct list_ele
 /** priority scheduler (1) */
 // 여기에 const struct list_elem *l, const struct list_elem *s 해야 할 수도 있을 듯.
 bool thread_compare_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED);
-void thread_test_preemption (void);
+void thread_cpu_acquire (void);
 
 /**  priority inversion(donation) */
 /** 1

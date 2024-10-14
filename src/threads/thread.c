@@ -252,7 +252,7 @@ thread_create (const char *name, int priority,
 	 */
   thread_unblock (t);
   // for priority scheduleing (1)
-  thread_test_preemption (); // runnning thread의 priority 변경으로 인한 priority 재확인
+  thread_cpu_acquire (); // runnning thread의 priority 변경으로 인한 priority 재확인
 
   return tid;
 }
@@ -284,15 +284,16 @@ thread_block (void)
 void
 thread_unblock (struct thread *t) 
 {
-  enum intr_level old_level;
-
   ASSERT (is_thread (t));
-
-  old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+
+  enum intr_level old_level;
+  old_level = intr_disable ();
+
   // list_push_back (&ready_list, &t->elem); // list push back 함수는 round-robin 방식에서 elem을 list의 맨 뒤에 push 하는 함수이다.
   list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, 0);
   t->status = THREAD_READY;
+
   intr_set_level (old_level);
 }
 
@@ -360,17 +361,19 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  struct thread *cur = thread_current ();
-  enum intr_level old_level;
-  
   ASSERT (!intr_context ());
 
+  struct thread *cur = thread_current ();
+  enum intr_level old_level;
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+
+  if (cur != idle_thread) {
     // list_push_back (&ready_list, &cur->elem); 이는 round-robin 방식에 사용되는 단순 list_push_back() 함수이다.
     list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, 0);
+  }
   cur->status = THREAD_READY;
   schedule (); // running thread가 CPU를 양보한다.
+
   intr_set_level (old_level);
 }
 
@@ -413,7 +416,7 @@ thread_set_priority (int new_priority)
     /**  priority inversion(donation) 구현 */
 
     /**  alarm clock 구현. */
-    thread_test_preemption (); // runnning thread의 priority 변경으로 인한 priority 재확인
+    thread_cpu_acquire (); // runnning thread의 priority 변경으로 인한 priority 재확인
     /**  alarm clock 구현. */
   }
 }
@@ -444,7 +447,7 @@ thread_set_nice (int nice UNUSED)
   struct thread *cur = thread_current();
   cur->nice = nice;
   mlfqs_calculate_priority (cur);
-  thread_test_preemption ();
+  thread_cpu_acquire ();
 
   intr_set_level (old_level); // 다시 interrupt를 활성화 해준다.
   return;
@@ -872,12 +875,13 @@ thread_compare_donate_priority (const struct list_elem *l, const struct list_ele
 // 만약 ready_list의 thread가 더 높은 priority를 가진다면 thread_yield()를 실행하여 CPU의 점유권을 넘겨준다.
 // 이 함수를 (1), (2)에 추가한다.
 void
-thread_test_preemption (void)
+thread_cpu_acquire (void)
 {
-  if (!list_empty (&ready_list) &&
+  if (list_empty (&ready_list)) return;
+  
+  struct thread* thread_tester = list_entry (list_front (&ready_list), struct thread, elem);
   // priority1 < priority2 라면, priority2의 우선순위가 더 높음을 의미한다. 또한 이것이 list의 맨 앞에 추가된다.
-  thread_current ()->priority <
-  list_entry (list_front (&ready_list), struct thread, elem)->priority)
+  if (thread_current ()->priority < thread_tester->priority)
     thread_yield();
 }
 
