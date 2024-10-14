@@ -316,7 +316,7 @@ lock_release (struct lock *lock)
     * mlfqs 스케줄러는 시간에 따라 priority가 재조정되므로 priority donation을 사용하지 않는다.
     * 따라서, lock_release에서 구현해주었던 priority donation을 mlfqs에서는 비활성화 시켜주어야 한다.
     */
-    remove_with_lock (lock);
+    remove_donations_waitonlock (lock);
     update_priority ();
   }
   /** priority inversion(donations) 구현 */
