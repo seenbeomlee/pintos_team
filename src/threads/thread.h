@@ -4,7 +4,17 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+#include "filesys/directory.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
+struct file
+  {
+    struct inode *inode;        /* File's inode. */
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+  };
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -23,6 +33,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define FIXED_VAR (1<<14)             /* Fixed Variable*/
 
 /* A kernel thread or user process.
 
@@ -80,6 +91,13 @@ typedef int tid_t;
    only because they are mutually exclusive: only a thread in the
    ready state is on the run queue, whereas only a thread in the
    blocked state is on a semaphore wait list. */
+struct donated_priority
+{
+  int priority;
+  struct lock* donating_lock;
+  struct list_elem elem;
+};
+
 struct thread
   {
     /* Owned by thread.c. */
@@ -88,14 +106,32 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int original_priority;              /* original priority*/
     struct list_elem allelem;           /* List element for all threads list. */
-
+    struct lock* wait_on_lock;            /* lock waiting*/
+    struct list donated_priorities;       /* the list holding donated priority*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    int64_t wake_up_ticks;
+
+    int recent_cpu;
+    int nice;
+
+
+    struct list child_threads;
+    struct list_elem child_elem;
+    int exit_code;
+    struct semaphore child_check_sem;
+    struct semaphore loading_sem;
+    bool waiting;
+
+    struct file *file_descriptor[128];
+    struct thread *parent;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
 #endif
 
     /* Owned by thread.c. */
@@ -137,5 +173,16 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+bool compare_priority(struct list_elem* e1, struct list_elem* e2, void *aux UNUSED);
+bool check_switching(void);
+void sort_ready_list(void);
+void blocked_thread_list_insert(void);
+void thread_mlfqs_update(struct thread* t);
+void update_load_avg(void);
+void update_thread_recent_cpu(struct thread* t);
+void update_all_thread_recent_cpu(void);
+void update_all_mlfqs_update(void);
+void update_current_thread_recent_cpu(void);
 
 #endif /* threads/thread.h */
