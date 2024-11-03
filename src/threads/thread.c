@@ -451,9 +451,8 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
-  enum intr_level old_level;
-  struct thread* pt = NULL;   
-
+  struct thread* pt = NULL;
+  int i;
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -464,20 +463,21 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
-  old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  intr_set_level (old_level);
-
+  
 #ifdef USERPROG
-  for (int i = 0; i < 128; i++) {                                                         
-      t->fd[i] = NULL;                                                                
-  }    
-  sema_init(&(t->child_lock), 0);
-  sema_init(&(t->mem_lock), 0);
+  for (i = 0; i < 200; i++) {
+      t->fd[i] = NULL;
+  }
+  //t->child_lock = 0;
+  //t->mem_lock = 0;
+  t->parent = running_thread();
+  sema_init(&t->child_lock, 0); 
+  sema_init(&t->mem_lock, 0); 
+  sema_init(&t->load_lock, 0); 
   list_init(&(t->child));
   list_push_back(&(running_thread()->child), &(t->child_elem));
-#endif   
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

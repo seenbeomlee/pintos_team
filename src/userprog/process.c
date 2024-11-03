@@ -46,15 +46,19 @@ process_execute (const char *file_name)
   parse_filename(file_name, cmd_name);
 
   if (filesys_open(cmd_name) == NULL) {
-    return -1;
+      return -1;
   }
-
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
+  sema_down(&thread_current()->load_lock);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
-  
-  // return process_wait(tid);
+    palloc_free_page (fn_copy);
+  for (e = list_begin(&thread_current()->child); e != list_end(&thread_current()->child); e = list_next(e)) {
+    t = list_entry(e, struct thread, child_elem);
+      if (t->exit_status == -1) {
+        return process_wait(tid);
+      }
+  }
   return tid;
 }
 
@@ -66,8 +70,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  char* cmd_name[256]; // 4KB
-
+  char cmd_name[500]; // 4KB
   parse_filename(file_name, cmd_name);
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -75,19 +78,16 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (cmd_name, &if_.eip, &if_.esp);
-
   if (success) {
-    // printf("successed!\n");
     construct_esp(file_name, &if_.esp);
   }
-
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) {
-    // printf("not successed!\n");
-    thread_exit ();
-  }
-  /* Start the user process by simulating a return from an
+  sema_up(&thread_current()->parent->load_lock);
+  if (!success)
+    exit(-1); /* file close를 위해 변경 */
+
+   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
