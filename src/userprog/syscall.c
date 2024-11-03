@@ -46,9 +46,9 @@ syscall_handler (struct intr_frame *f)
       f->eax = wait((pid_t)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_CREATE:
-      check_user_vaddr(f->esp + 16);
-      check_user_vaddr(f->esp + 20);
-      f->eax = create((const char *)*(uint32_t *)(f->esp + 16), (unsigned)*(uint32_t *)(f->esp + 20));
+      check_user_vaddr(f->esp + 4);
+      check_user_vaddr(f->esp + 8);
+      f->eax = create((const char *)*(uint32_t *)(f->esp + 4), (unsigned)*(uint32_t *)(f->esp + 8));
       break;
     case SYS_REMOVE:
       check_user_vaddr(f->esp + 4);
@@ -63,18 +63,18 @@ syscall_handler (struct intr_frame *f)
       f->eax = filesize((int)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_READ:
-      check_user_vaddr(f->esp + 20);
-      check_user_vaddr(f->esp + 24);
-      check_user_vaddr(f->esp + 28);
-      f->eax = read((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
+      check_user_vaddr(f->esp + 4);
+      check_user_vaddr(f->esp + 8);
+      check_user_vaddr(f->esp + 12);
+      f->eax = read((int)*(uint32_t *)(f->esp+4), (void *)*(uint32_t *)(f->esp + 8), (unsigned)*((uint32_t *)(f->esp + 12)));
       break;
     case SYS_WRITE:
-      write((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
+      write((int)*(uint32_t *)(f->esp+4), (void *)*(uint32_t *)(f->esp + 8), (unsigned)*((uint32_t *)(f->esp + 12)));
       break;
     case SYS_SEEK:
-      check_user_vaddr(f->esp + 16);
-      check_user_vaddr(f->esp + 20);
-      seek((int)*(uint32_t *)(f->esp + 16), (unsigned)*(uint32_t *)(f->esp + 20));
+      check_user_vaddr(f->esp + 4);
+      check_user_vaddr(f->esp + 8);
+      seek((int)*(uint32_t *)(f->esp + 4), (unsigned)*(uint32_t *)(f->esp + 8));
       break;
     case SYS_TELL:
       check_user_vaddr(f->esp + 4);
