@@ -28,11 +28,11 @@ syscall_handler (struct intr_frame *f)
       break;
     case SYS_EXEC:
       check_user_vaddr(f->esp + 4);
-      exec((const char *)*(uint32_t *)(f->esp + 4));
+      f->eax = exec((const char *)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_WAIT:
       check_user_vaddr(f->esp + 4);
-      wait((pid_t)*(uint32_t *)(f->esp + 4));
+      f->eax = wait((pid_t)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_CREATE:
       break;
@@ -46,7 +46,7 @@ syscall_handler (struct intr_frame *f)
       check_user_vaddr(f->esp + 20);
       check_user_vaddr(f->esp + 24);
       check_user_vaddr(f->esp + 28);
-      read((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
+      f->eax = read((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
       break;
     case SYS_WRITE:
       write((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));

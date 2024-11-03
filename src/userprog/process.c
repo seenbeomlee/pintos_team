@@ -32,6 +32,8 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   char cmd_name[256];
+  struct list_elem* e;
+  struct thread* t;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -42,11 +44,17 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   parse_filename(file_name, cmd_name);
+
+  if (filesys_open(cmd_name) == NULL) {
+    return -1;
+  }
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   
+  // return process_wait(tid);
   return tid;
 }
 
@@ -111,6 +119,7 @@ process_wait (tid_t child_tid UNUSED)
       sema_down(&(t->child_lock));
       exit_status = t->exit_status;
       list_remove(&(t->child_elem));
+      sema_up(&(t->mem_lock));
       return exit_status;
     }   
   }
@@ -142,6 +151,7 @@ process_exit (void)
       pagedir_destroy (pd);
     }
   sema_up(&(cur->child_lock));
+  sema_down(&(cur->mem_lock));
 }
 
 /* Sets up the CPU for running user code in the current
