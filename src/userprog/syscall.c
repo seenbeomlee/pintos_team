@@ -35,9 +35,9 @@ syscall_handler (struct intr_frame *f)
       f->eax = wait((pid_t)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_CREATE:
-      check_user_vaddr(f->esp + 4);
-      check_user_vaddr(f->esp + 8);
-      f->eax = create((const char *)*(uint32_t *)(f->esp + 4), (unsigned)*(uint32_t *)(f->esp + 8));
+      check_user_vaddr(f->esp + 16);
+      check_user_vaddr(f->esp + 20);
+      f->eax = create((const char *)*(uint32_t *)(f->esp + 16), (unsigned)*(uint32_t *)(f->esp + 20));
       break;
     case SYS_REMOVE:
       check_user_vaddr(f->esp + 4);
@@ -61,9 +61,9 @@ syscall_handler (struct intr_frame *f)
       write((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
       break;
     case SYS_SEEK:
-      check_user_vaddr(f->esp + 4);
-      check_user_vaddr(f->esp + 8);
-      seek((int)*(uint32_t *)(f->esp + 4), (unsigned)*(uint32_t *)(f->esp + 8));
+      check_user_vaddr(f->esp + 16);
+      check_user_vaddr(f->esp + 20);
+      seek((int)*(uint32_t *)(f->esp + 16), (unsigned)*(uint32_t *)(f->esp + 20));
       break;
     case SYS_TELL:
       check_user_vaddr(f->esp + 4);
@@ -109,68 +109,98 @@ wait (pid_t pid)
 }
 
 bool create (const char *file, unsigned initial_size) {
+  if (file == NULL) {
+    exit(-1);
+  }
+  check_user_vaddr(file);
   return filesys_create(file, initial_size);
 }
 
 bool remove (const char *file) {
+  if (file == NULL) {
+    exit(-1);
+  }   
+  check_user_vaddr(file);
   return filesys_remove(file);
 }
 
 int open (const char *file) {
-  int i;
-  struct file* fp = filesys_open(file);
-  if (fp == NULL) {
-      return -1; 
-  } else {
-    for (i = 3; i < 128; i++) {
-      if (thread_current()->fd[i] == NULL) {
-        thread_current()->fd[i] = fp; 
-        return i;
-      }   
-    }   
+  struct file* fp; 
+  if (file == NULL) {
+      exit(-1);
   }
-  return -1; 
+  check_user_vaddr(file);
+  fp = filesys_open(file);
+  if (fp == NULL) {
+      return -1;
+  } else {
+    for (int i = 3; i < 128; i++) {
+      if (thread_current()->fd[i] == NULL) {
+        thread_current()->fd[i] = fp;
+        return i;
+      }
+    }
+  }
+  return -1;
 }
 
 int filesize (int fd) {
+  if (thread_current()->fd[fd] == NULL) {
+    exit(-1);
+  }
   return file_length(thread_current()->fd[fd]);
 }
 
 int read (int fd, void* buffer, unsigned size) {
   int i;
+  check_user_vaddr(buffer);
   if (fd == 0) {
     for (i = 0; i < size; i ++) {
       if (((char *)buffer)[i] == '\0') {
         break;
-      }   
-    }   
+      }
+    }
   } else if (fd > 2) {
+    if (thread_current()->fd[fd] == NULL) {
+      exit(-1);
+    }
     return file_read(thread_current()->fd[fd], buffer, size);
   }
   return i;
 }
 
 int write (int fd, const void *buffer, unsigned size) {
-
-
+  check_user_vaddr(buffer);
   if (fd == 1) {
     putbuf(buffer, size);
     return size;
   } else if (fd > 2) {
+    if (thread_current()->fd[fd] == NULL) {
+      exit(-1);
+    }
     return file_write(thread_current()->fd[fd], buffer, size);
   }
-  return -1; 
+  return -1;
 }
 
 void seek (int fd, unsigned position) {
+  if (thread_current()->fd[fd] == NULL) {
+    exit(-1);
+  }
   file_seek(thread_current()->fd[fd], position);
 }
 
 unsigned tell (int fd) {
+  if (thread_current()->fd[fd] == NULL) {
+    exit(-1);
+  }
   return file_tell(thread_current()->fd[fd]);
 }
 
 void close (int fd) {
+  if (thread_current()->fd[fd] == NULL) {
+    exit(-1);
+  }
   return file_close(thread_current()->fd[fd]);
 }
 
