@@ -3,6 +3,7 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -19,13 +20,19 @@ syscall_handler (struct intr_frame *f)
   // printf("syscall : %d\n",syscall_num);
   switch (syscall_num) {
     case SYS_HALT:
+      halt();
       break;
     case SYS_EXIT:
+      check_user_vaddr(f->esp + 4);
       exit(*(uint32_t *)(f->esp + 4));
       break;
     case SYS_EXEC:
+      check_user_vaddr(f->esp + 4);
+      exec((const char *)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_WAIT:
+      check_user_vaddr(f->esp + 4);
+      wait((pid_t)*(uint32_t *)(f->esp + 4));
       break;
     case SYS_CREATE:
       break;
@@ -36,9 +43,13 @@ syscall_handler (struct intr_frame *f)
     case SYS_FILESIZE:
       break;
     case SYS_READ:
+      check_user_vaddr(f->esp + 20);
+      check_user_vaddr(f->esp + 24);
+      check_user_vaddr(f->esp + 28);
+      read((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
       break;
     case SYS_WRITE:
-      write((int)*(uint32_t *)(f->esp+4), (void *)*(uint32_t *)(f->esp + 8), (unsigned)*((uint32_t *)(f->esp + 12)));
+      write((int)*(uint32_t *)(f->esp+20), (void *)*(uint32_t *)(f->esp + 24), (unsigned)*((uint32_t *)(f->esp + 28)));
       break;
     case SYS_SEEK:
       break;
@@ -98,4 +109,12 @@ write (int fd, const void *buffer, unsigned size)
     return size;
   }
   return -1; 
+}
+
+void 
+check_user_vaddr(const void *vaddr) 
+{
+  if (!is_user_vaddr(vaddr)) {
+    exit(-1);
+  }
 }

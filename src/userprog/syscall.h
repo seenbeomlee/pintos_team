@@ -17,4 +17,6 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
 
+void check_user_vaddr(const void *vaddr);
+
 #endif /* userprog/syscall.h */
