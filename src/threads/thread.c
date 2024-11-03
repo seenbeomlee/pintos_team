@@ -452,6 +452,7 @@ static void
 init_thread (struct thread *t, const char *name, int priority)
 {
   enum intr_level old_level;
+  struct thread* pt = NULL;   
 
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
@@ -467,6 +468,12 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+#ifdef USERPROG
+  sema_init(&(t->child_lock), 0);        
+  list_init(&(t->child));
+  list_push_back(&(running_thread()->child), &(t->child_elem));
+#endif   
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
