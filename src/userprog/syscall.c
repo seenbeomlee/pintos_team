@@ -4,6 +4,14 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "filesys/off_t.h"
+
+struct file
+  {
+    struct inode *inode;        /* File's inode. */
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+  };
 
 static void syscall_handler (struct intr_frame *);
 
@@ -125,6 +133,7 @@ bool remove (const char *file) {
 }
 
 int open (const char *file) {
+  int i;
   struct file* fp; 
   if (file == NULL) {
       exit(-1);
@@ -132,16 +141,19 @@ int open (const char *file) {
   check_user_vaddr(file);
   fp = filesys_open(file);
   if (fp == NULL) {
-      return -1;
+      return -1; 
   } else {
-    for (int i = 3; i < 128; i++) {
+    for (i = 3; i < 128; i++) {
       if (thread_current()->fd[i] == NULL) {
-        thread_current()->fd[i] = fp;
+        if (strcmp(thread_current()->name, file) == 0) {
+            file_deny_write(fp);
+        }   
+        thread_current()->fd[i] = fp; 
         return i;
-      }
-    }
+      }   
+    }   
   }
-  return -1;
+  return -1; 
 }
 
 int filesize (int fd) {
@@ -178,6 +190,9 @@ int write (int fd, const void *buffer, unsigned size) {
     if (thread_current()->fd[fd] == NULL) {
       exit(-1);
     }
+    if (thread_current()->fd[fd]->deny_write) {
+        file_deny_write(thread_current()->fd[fd]);
+    }
     return file_write(thread_current()->fd[fd], buffer, size);
   }
   return -1;
@@ -198,10 +213,13 @@ unsigned tell (int fd) {
 }
 
 void close (int fd) {
+  struct file* fp;
   if (thread_current()->fd[fd] == NULL) {
     exit(-1);
   }
-  return file_close(thread_current()->fd[fd]);
+  fp = thread_current()->fd[fd];
+  thread_current()->fd[fd] = NULL;
+  return file_close(fp);
 }
 
 void 
