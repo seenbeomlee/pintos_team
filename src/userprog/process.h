@@ -8,6 +8,4 @@ int process_wait (tid_t);
 void process_exit (void);
 void process_activate (void);
 
-void argument_passing(void **esp, char** file_name, int argc);
-
 #endif /* userprog/process.h */

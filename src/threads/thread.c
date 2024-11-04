@@ -456,16 +456,19 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
-
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+  t->waiting = false;
+  list_init(&t->child_threads);
+  sema_init(&t->child_check_sem, 0);
+  sema_init(&t->loading_sem, 0);
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+  list_push_back (&running_thread()->child_threads, &t->child_elem);
   intr_set_level (old_level);
 }
 
