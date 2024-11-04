@@ -4,7 +4,18 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+#include "filesys/directory.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
+struct file
+  {
+    struct inode *inode;        /* File's inode. */
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+  };
+  
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -92,6 +103,16 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
+    struct list child_threads;
+    struct list_elem child_elem;
+    int exit_code;
+    struct semaphore child_check_sem;
+    struct semaphore loading_sem;
+    bool waiting;
+
+    struct file *file_descriptor[128];
+    struct thread *parent;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

@@ -18,55 +18,118 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#include "devices/timer.h"
-
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+
+struct nameAndsem
+{
+  char *name;
+  struct semaphore sem;
+  bool success;
+};
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (const char *file_name)
 {
-  char *fn_copy, *parsed_fn;;
+  char *fn_copy, *ptr;
+  char* loading_name;
   tid_t tid;
+  struct nameAndsem *ns = palloc_get_page(0);
+  if (ns == NULL){
+    return TID_ERROR;
+  }
+  sema_init(&ns->sem, 0);
+  ns->success = false;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  if (fn_copy == NULL){
+    palloc_free_page(ns);
     return TID_ERROR;
-  strlcpy (fn_copy, file_name, PGSIZE);
+  }
+  loading_name = palloc_get_page (0);
+  if (loading_name == NULL){
+    palloc_free_page(fn_copy);
+    palloc_free_page(ns);
+    return TID_ERROR;
+  }
 
+  strlcpy (fn_copy, file_name, PGSIZE);
+  strlcpy (loading_name, file_name, PGSIZE);
+  ns->name = fn_copy;
+  loading_name = strtok_r(loading_name, " ", &ptr);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  tid = thread_create (loading_name, PRI_DEFAULT, start_process, ns);
+  sema_down(&ns->sem); // 로딩이 완료될 때까지 기다리기
+  bool success = ns->success;
+
+  if (tid == TID_ERROR || !success){
+    palloc_free_page (fn_copy);
+    palloc_free_page(loading_name);
+    palloc_free_page (ns);
+    return TID_ERROR;
+  }
+  palloc_free_page (fn_copy);
+  palloc_free_page(loading_name);
+  palloc_free_page (ns);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *sem)
 {
-  char *file_name = file_name_;
+  struct nameAndsem* ns = sem;
+  char *file_name = ns->name;
   struct intr_frame if_;
   bool success;
+  int i;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  char *ptr;
+  char* copy = palloc_get_page (0);
+  int argc = 0;
+  strlcpy (copy, file_name, PGSIZE);
+
+  // 인자 개수 세기
+  for (char* token = strtok_r(copy, " ", &ptr); token != NULL; token = strtok_r(NULL, " ", &ptr)){
+    argc++;
+  }
+  strlcpy (copy, file_name, PGSIZE);
+
+  // 인자 저장
+  i = 0;
+  char** file_name_copy = (char **)malloc(sizeof(char *) * argc);
+  for (char* token = strtok_r(copy, " ", &ptr); token != NULL; token = strtok_r(NULL, " ", &ptr)){
+    file_name_copy[i] = token;
+    i++;
+  }
+
+  success = load(file_name_copy[0],  &if_.eip, &if_.esp); // 로딩 시도
+
+  ns->success = success;
+  sema_up(&ns->sem); // 로딩 완료
+
+  if (success){
+    argument_passing(&if_.esp, file_name_copy, argc);
+  }
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  free(file_name_copy);
+  palloc_free_page(copy);
+  if (!success){
+    exit(-1);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -464,4 +527,51 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+void argument_passing(void **esp, char** file_name, int argc) {
+
+  void *addr[argc]; // 각 인자의 주소를 저장할 배열 addr을 생성. 배열 크기는 인자 개수 argc
+
+  // 인자를 역순으로 스택에 복사
+  for (int i = argc - 1; i >= 0; i--)
+  {
+     *esp -= strlen(file_name[i]) + 1; // 문자열 끝 \0 처리를 위해 +1
+     memcpy(*esp, file_name[i], strlen(file_name[i]) + 1);
+     addr[i] = *esp;
+  }
+
+  // 스택 포인터가 4바이트 배수가 될 때까지 1바이트씩 감소시키고, 정렬을 위해 추가된 바이트에 0을 채움
+  while ((PHYS_BASE - *esp) % 4 != 0)
+  {
+    *esp -= 1;
+    *((uint8_t *)*esp) = 0;
+  }
+
+  // 인자 리스트의 끝을 표시하기 위해 NULL 삽입
+  *esp -= 4;
+  *((uint32_t *)*esp) = 0;
+
+
+  // 인자 주소 넣기
+  for (int i = argc - 1 ; i >= 0; i--){
+    *esp -= 4;
+    *((void**)*esp) = addr[i];
+  }
+
+  // 인자 주소 리스트의 끝을 표시하기 위해 NULL 삽입
+  *esp -= 4;
+  *((void**)*esp) = *esp + 4;
+
+  // argc 넣기
+  *esp -= 4;
+  *((int*)*esp) = argc;
+
+  // 리턴 주소를 0으로 설정하여 스택의 최상단에 삽입. 이는 main 함수 종료 후 돌아갈 주소가 없음을 나타냄
+  *esp -= 4;
+  *((int*)*esp) = 0;
+
+  //uintptr_t ofs = (uintptr_t)*esp;
+  //int byte_size = PHYS_BASE - ofs;
+  //hex_dump(ofs, *esp,byte_size, true);
 }
