@@ -345,18 +345,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Read program headers. */
-  file_ofs = ehdr.e_phoff;
+  file_ofs = ehdr.e_phoff; // 프로그램 헤더 테이블의 시작 오프셋을 설정
   for (i = 0; i < ehdr.e_phnum; i++)
     {
       struct Elf32_Phdr phdr;
 
-      if (file_ofs < 0 || file_ofs > file_length (file))
+      // 파일 오프셋이 파일 크기보다 크거나 0보다 작으면 잘못된 오프셋이므로 goto done으로 이동
+      if (file_ofs < 0 || file_ofs > file_length (file)) 
         goto done;
-      file_seek (file, file_ofs);
+      
+      file_seek (file, file_ofs); // 파일 포인터를 현재 프로그램 헤더가 있는 위치로 이동
 
+      // 현재 프로그램 헤더를 읽어와 phdr에 저장
       if (file_read (file, &phdr, sizeof phdr) != sizeof phdr) goto done;
 
-      file_ofs += sizeof phdr;
+      file_ofs += sizeof phdr; // 다음 프로그램 헤더로 이동하기 위해 file_ofs에 sizeof phdr만큼을 더함
 
       switch (phdr.p_type)
         {
@@ -366,40 +369,40 @@ load (const char *file_name, void (**eip) (void), void **esp)
         case PT_STACK:
         default:
           /* Ignore this segment. */
-          break;
+          break; // p_type이 위 케이스 중 하나라면 해당 세그먼트를 무시하고 다음 헤더로 넘어감
         case PT_DYNAMIC:
         case PT_INTERP:
         case PT_SHLIB:
-          goto done;
+          goto done; // p_type이 위 케이스 중 하나라면 잘못된 타입의 세그먼트이므로 로드를 중단하고 goto done으로 이동
         case PT_LOAD:
-          if (validate_segment (&phdr, file))
-            {
-              bool writable = (phdr.p_flags & PF_W) != 0;
-              uint32_t file_page = phdr.p_offset & ~PGMASK;
-              uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
-              uint32_t page_offset = phdr.p_vaddr & PGMASK;
-              uint32_t read_bytes, zero_bytes;
-              if (phdr.p_filesz > 0)
-                {
-                  /* Normal segment.
-                     Read initial part from disk and zero the rest. */
-                  read_bytes = page_offset + phdr.p_filesz;
-                  zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE)
-                                - read_bytes);
-                }
-              else
-                {
-                  /* Entirely zero.
-                     Don't read anything from disk. */
-                  read_bytes = 0;
-                  zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
-                }
-              if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
-                goto done;
-            }
+        // p_type이 PT_LOAD인 경우(메모리에 로드할 세그먼트), validate_segment 함수로 유효성을 검사하고, 유효할 경우에만 로드 절차를 진행
+          if (validate_segment (&phdr, file)) {
+            bool writable = (phdr.p_flags & PF_W) != 0; // 세그먼트가 쓰기 가능한지 확인
+            uint32_t file_page = phdr.p_offset & ~PGMASK; // 파일 페이지 정렬된 주소를 계산
+            uint32_t mem_page = phdr.p_vaddr & ~PGMASK; // 메모리의 페이지 정렬된 주소를 계산
+            uint32_t page_offset = phdr.p_vaddr & PGMASK; // 페이지 내 오프셋을 계산
+            uint32_t read_bytes, zero_bytes;
+            if (phdr.p_filesz > 0)
+              {
+                /* Normal segment.
+                    Read initial part from disk and zero the rest. */
+                read_bytes = page_offset + phdr.p_filesz;
+                zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE)
+                              - read_bytes);
+              }
+            else
+              {
+                /* Entirely zero.
+                    Don't read anything from disk. */
+                read_bytes = 0;
+                zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
+              }
+            if (!load_segment (file, file_page, (void *) mem_page,
+                                read_bytes, zero_bytes, writable))
+              goto done;
+          }
           else
-            goto done;
+            goto done; 
           break;
         }
     }
