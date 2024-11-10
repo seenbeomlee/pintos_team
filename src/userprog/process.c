@@ -97,6 +97,12 @@ void push_stack(void **esp, char** argv, int argc) {
   *((int*)*esp) = 0;
 }
 
+struct file_sema
+{
+  char *name;
+  struct semaphore sem;
+  bool success;
+};
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -109,12 +115,21 @@ process_execute (const char *file_name)
   char* loading_name;
   tid_t tid;
 
+  struct file_sema *ns = palloc_get_page(0);
+
+  if (ns == NULL){
+    return TID_ERROR;
+  }
+  sema_init(&ns->sem, 0);
+  ns->success = false;
+
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  ns->name = fn_copy;
 
   loading_name = palloc_get_page (0); // thread_create에 제대로 된 이름 넣어주기
   if (loading_name == NULL){
@@ -122,9 +137,13 @@ process_execute (const char *file_name)
     return TID_ERROR;
   }
   strlcpy (loading_name, file_name, PGSIZE);
+  loading_name = strtok_r(loading_name, " ", *parsed_fn);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (loading_name, PRI_DEFAULT, start_process, fn_copy); // file_name -> loading_name
+  tid = thread_create (loading_name, PRI_DEFAULT, start_process, ns); // file_name -> loading_name
+  sema_down(&ns->sem); // 로딩이 완료될 때까지 기다리기
+  bool success = ns->success;
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -133,9 +152,10 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *sem)
 {
-  char *file_name = file_name_;
+  struct file_sema * ns = sem;
+  char *file_name = ns->name;
   struct intr_frame if_;
   bool success;
 
@@ -156,6 +176,9 @@ start_process (void *file_name_)
   parse_filename(copy, argc, argv); // 인자 배열 채우기
 
   success = load (argv[0], &if_.eip, &if_.esp); // 로딩 시도
+
+  ns->success = success;
+  sema_up(&ns->sem); // 로딩 완료
 
   if (success){
     push_stack(&if_.esp, argv, argc);
