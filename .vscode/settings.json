@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "file.h": "c",
+        "pagedir.h": "c",
+        "tss.h": "c",
+        "flags.h": "c",
+        "filesys.h": "c",
+        "init.h": "c"
+    }
+}
