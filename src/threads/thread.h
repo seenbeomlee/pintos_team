@@ -5,6 +5,13 @@
 #include <list.h>
 #include <stdint.h>
 
+struct file
+  {
+    struct inode *inode;        /* File's inode. */
+    off_t pos;                  /* Current position. */
+    bool deny_write;            /* Has file_deny_write() been called? */
+  };
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -96,6 +103,16 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    int exit_status;
+    struct file *file_descriptor[128];
+
+    struct list child_threads;
+    struct list_elem child_elem
+    struct semaphore child_check_sem;
+    struct semaphore loading_sem;
+    bool waiting;
+    struct thread *parent;
+    
 #endif
 
     /* Owned by thread.c. */

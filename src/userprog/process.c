@@ -98,7 +98,6 @@ void push_stack(void **esp, char** argv, int argc) {
 }
 
 
-
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -106,7 +105,8 @@ void push_stack(void **esp, char** argv, int argc) {
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy, *parsed_fn;;
+  char *fn_copy, *parsed_fn;
+  char* loading_name;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -116,8 +116,15 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  loading_name = palloc_get_page (0); // thread_create에 제대로 된 이름 넣어주기
+  if (loading_name == NULL){
+    palloc_free_page(fn_copy);
+    return TID_ERROR;
+  }
+  strlcpy (loading_name, file_name, PGSIZE);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (loading_name, PRI_DEFAULT, start_process, fn_copy); // file_name -> loading_name
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -178,10 +185,40 @@ start_process (void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int
-process_wait (tid_t child_tid UNUSED) 
-{
-  return -1;
+
+int process_wait(tid_t child_tid UNUSED) {
+  struct thread* cur = thread_current(); // 현재 실행 중인 스레드 (부모 프로세스)
+  struct thread* t; // 특정 자식 프로세스를 가리키기 위한 포인터
+  struct list_elem* child; // 자식 스레드 리스트를 순회하는 리스트 요소 포인터
+
+  struct lock loop_lock; // 자식 스레드를 검색하고 기다리는 동안 사용되는 락
+
+  lock_init(&loop_lock);
+  int ret; // 자식 프로세스의 종료 코드
+
+  // 자식 프로세스가 없으면 대기하지 않음
+  if (list_empty(&(cur->child_threads))) return -1;
+
+  // 자식 프로세스 iteration
+  for (child = list_front(&(cur->child_threads));
+  child != list_end(&(cur->child_threads));
+  child=list_next(child)){
+    t = list_entry(child, struct thread, child_elem);
+    if(t->tid == child_tid && !t->waiting){ // 현재 자식 스레드의 ID가 요청된 자식 프로세스 ID(child_tid)와 같고, 해당 스레드가 대기 상태가 아니라면
+      lock_acquire(&loop_lock);
+      if (!t->waiting) t->waiting = true; // lock_acquire 전에 확인한 조건이니 한번 더 확인하는게 맞음
+      else{
+        lock_release(&loop_lock);
+        return -1;
+      }
+      lock_release(&loop_lock);
+      sema_down(&t->child_check_sem);
+      ret = t->exit_code;
+      sema_up(&t->loading_sem);
+      return ret;
+    }
+  }
+    return -1;
 }
 
 /* Free the current process's resources. */
@@ -194,6 +231,10 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
+  sema_up(&cur->child_check_sem); 
+  sema_down(&cur->loading_sem);
+  list_remove(&cur->child_elem);
+
   if (pd != NULL) 
     {
       /* Correct ordering here is crucial.  We must set
