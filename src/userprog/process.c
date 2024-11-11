@@ -349,6 +349,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
         case PT_SHLIB:
           goto done;
         case PT_LOAD:
+// 그 뒤, 파일을 실제로 VM에 올리는 과정이 진행된다. 
+// 파일이 제대로 된 ELF 인지 검사하는 과정이 동반되며, 
+// 세그먼트 단위로 PT_LOAD의 헤더 타입을 가진 부분을 하나씩 메모리로 올리는 작업을 진행한다.
           if (validate_segment (&phdr, file)) 
             {
               bool writable = (phdr.p_flags & PF_W) != 0;

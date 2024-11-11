@@ -13,9 +13,16 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static void
+/** 2
+ * 시스템 콜을 호출할 때, 원하는 기능에 해당하는 시스템 콜 번호를 rax에 담는다.
+ * 그리고 시스템 콜 핸들러는 rax의 숫자로 시스템 콜을 호출하고, -> 이는 enum으로 선언되어있다.
+ * 해달 콜의 반환값을 다시 rax에 담아서 intr_frame(인터럽트 프레임)에 저장한다.
+ */
+static void // void 형식에 return을 추가해야 한다. (디버깅하다 발견한 사실이라 함.)
 syscall_handler (struct intr_frame *f) 
 {
+  // Argument 순서
+	// %rdi %rsi %rdx %r10 %r8 %r9
   int syscall_num = *(uint32_t *)(f->esp);
   switch (syscall_num) {
     case SYS_HALT:                   /* Halt the operating system. */
@@ -66,7 +73,7 @@ syscall_handler (struct intr_frame *f)
 
 void 
 halt(void) {
-  shutdown_power_off();
+  shutdown_power_off(); // 핀토스를 종료시키는 시스템 콜이다.
 }
 
 void 
@@ -82,6 +89,7 @@ exit (int status)
 pid_t
 exec(const char *cmd_line) 
 {
+  // 만약 프로그램이 프로세스를 로드하지 못하거나, 다른 이유로 돌리지 못하게 되면 exit_status == -1을 반환하며 프로세스가 종료된다.
   return process_execute(cmd_line);
 }
 
@@ -94,7 +102,7 @@ wait(pid_t pid)
 int 
 read(int fd, void *buffer, unsigned int size)
 {
-  if (fd == 0) {  // 0(stdin) -> keyboard로 직접 입력
+  if (fd == 0) {  // 0(stdin) -> keyboard(standard input)로 직접 입력
     int i = 0;  // 쓰레기 값 return 방지
     char c;
     unsigned char *buf = buffer;
