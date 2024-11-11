@@ -290,8 +290,12 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
+  struct thread* t = thread_current ();
+  list_remove (&t->allelem);
+  if (t->parent_thread_pointer != NULL) { // 현재 종료시키는 thread의 parent thread가 있다면, 부모 thread의 wait를 중단시킨다.
+    sema_up(&(t->exit_sema));
+  }
+  t->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -451,8 +455,8 @@ is_thread (struct thread *t)
 static void
 init_thread (struct thread *t, const char *name, int priority)
 {
-  struct thread* pt = NULL;
-  int i;
+  enum intr_level old_level;
+
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -463,20 +467,35 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+  old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  
+  intr_set_level (old_level);
+
 #ifdef USERPROG
-  for (i = 0; i < 200; i++) {
-      t->fd[i] = NULL;
+  /**
+   * t라는 thread를 초기화 시키는 init_thread function은
+   * thread t의 부모 thread인 running thread()가 실행하게 된다.
+   * 따라서, running thread()의 child로는 t와 t의 자식들을 넣어주고,
+   * t의 parent_thread로는 running thread()를 넣어준다.
+   */
+  sema_init(&(t->exit_sema), 0);
+  sema_init(&(t->wait_sema), 0);
+
+  list_init(&(t->child_threads_list));
+
+  struct thread* parent_thread = running_thread();
+  list_push_back(&(parent_thread->child_threads_list), &(t->child_thread_list_elem));
+  t->parent_thread_pointer = running_thread();  
+
+  /**
+   * palloc_get_page(0) : 메모리 초기화가 진행되지 않는다.
+   * palloc_get_page(PAL_ZERO) : 메모리 초기화가 진행된다. -> 따라서, 별도로 for문 돌면서 fd_table[i] 초기화하는 작업 필요치 않다.
+   */
+  // t->fd_table = palloc_get_page(PAL_ZERO);
+  for(int i = 0; i < FDTABLE_SIZE; i++) {
+    t->fd_table[i] = NULL;
   }
-  //t->child_lock = 0;
-  //t->mem_lock = 0;
-  t->parent = running_thread();
-  sema_init(&t->child_lock, 0); 
-  sema_init(&t->mem_lock, 0); 
-  sema_init(&t->load_lock, 0); 
-  list_init(&(t->child));
-  list_push_back(&(running_thread()->child), &(t->child_elem));
 #endif
 }
 
@@ -549,7 +568,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      palloc_free_page (prev);
+      // palloc_free_page (prev);
     }
 }
 
@@ -593,3 +612,29 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+struct thread*
+find_child_thread(tid_t tid_child)
+{
+  struct list_elem* child_elem;
+  // thread_current가 parent thread가 된다.
+  struct list* child_list = &(thread_current()->child_threads_list);
+
+  // 부모의 child_list를 순회하면서, tid_child == tid인 child thread가 있는지 확인한다.
+  return iterate_list(child_elem, child_list, tid_child);
+}
+
+struct thread*
+iterate_list(struct list_elem* elem, struct list* list, tid_t tid)
+{
+  struct thread* thread_to_find = NULL;
+
+  for(elem = list_begin(list); elem != list_end (list); elem = list_next(elem)) {
+    thread_to_find = list_entry(elem, struct thread, child_thread_list_elem);
+    if(thread_to_find->tid == tid) {
+      return thread_to_find;
+    }
+  }
+
+  return NULL;
+}

@@ -4,8 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
-#include "synch.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -25,6 +24,9 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+/* file descriptor table size*/
+#define FDTABLE_SIZE 256
 
 /* A kernel thread or user process.
 
@@ -98,14 +100,21 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct semaphore child_lock;
-    struct semaphore mem_lock;
-    struct semaphore load_lock;
-    struct thread* parent;
-    struct list child;
-    struct list_elem child_elem;
-    int exit_status;
-    struct file* fd[200];
+    int exit_status;                    /* exit 호출 시 종료 상태 */
+
+    /* parent thread */
+    struct thread* parent_thread_pointer;
+    /* child list element */
+    struct list_elem child_thread_list_elem;
+    /* child list */
+    struct list child_threads_list;
+
+    /* exit semaphore, 자식 프로세스 종료 대기를 위한 세마포어 */
+    struct semaphore exit_sema;
+    /* wait semaphore, 자식 프로세스 생성 대기 */
+    struct semaphore wait_sema;
+
+    struct file* fd_table[FDTABLE_SIZE];    
 #endif
 
     /* Owned by thread.c. */
@@ -147,5 +156,13 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/** 2
+ * hierarchical process structure
+ * 현재 프로세스의 자식 리스트를 검색하여 해당 tid에 맞는 process descriptor를 반환한다.
+ * tid를 갖는 프로세스 디스크립터가 존재하지 않을 경우 NULL을 반환한다.
+ */
+struct thread* find_child_thread(tid_t tid);
+struct thread* iterate_list(struct list_elem* elem, struct list* list, tid_t tid);
 
 #endif /* threads/thread.h */

@@ -9,6 +9,11 @@ void process_exit (void);
 void process_activate (void);
 
 void parse_filename(char *src, char *dest);
-void construct_esp(char *file_name, void **esp);
+void setting_esp(char* file_name, void** esp);
+int parse_argc(char* file_name);
+void parse_argv(char** argv, int argc, char* file_name);
+void free_argv(char** argv, int argc);
+
+void process_file_close(int fd_idx);
 
 #endif /* userprog/process.h */

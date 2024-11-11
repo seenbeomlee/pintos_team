@@ -31,10 +31,10 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
-  char cmd_name[256];
-  struct list_elem* e;
-  struct thread* t;
   tid_t tid;
+
+  int size = strlen(file_name);
+  char* parsed_fn[size + 1]; // 왜냐하면, size는 문자열의 길이이므로 '\0'을 삽입하기 위해서는 +1을 해주어야 한다.
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -43,51 +43,82 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  parse_filename(file_name, cmd_name);
-
-  if (filesys_open(cmd_name) == NULL) {
-      return -1;
-  }
+	/** 2
+	 * 	Project2: for Test Case - 직접 프로그램을 실행할 때에는 이 함수를 사용하지 않지만 make check에서
+	 *  이 함수를 통해 process_create를 실행하기 때문에 이 부분을 수정해주지 않으면 Test Case의 Thread_name이
+	 *  커맨드 라인 전체로 바뀌게 되어 Pass할 수 없다.
+	 */
+  parse_filename(file_name, parsed_fn);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (cmd_name, PRI_DEFAULT, start_process, fn_copy);
-  sema_down(&thread_current()->load_lock);
+  tid = thread_create (parsed_fn, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
-  for (e = list_begin(&thread_current()->child); e != list_end(&thread_current()->child); e = list_next(e)) {
-    t = list_entry(e, struct thread, child_elem);
-      if (t->exit_status == -1) {
-        return process_wait(tid);
-      }
-  }
+    palloc_free_page (fn_copy); 
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
+/** 2
+ * 유저가 입력한 명령어를 수행할 수 있도록, 프로그램을 메모리에 적재하고 실행하는 함수이다.
+ * filename을 f_name이라는 인자로 받아서 file_name에 저장한다.
+ * 초기에 file_name은 실행 프로그램 파일명과 옵션이 분리되지 않은 상황(통 문자열)이다.
+ * thread의 이름을 실행 파일명으로 저장하기 위해 실행 프로그램 파일명만 분리하기 위해 parsing해야 한다.
+ * 실행파일명은 cmd line 안에서 첫번째 공백 전의 단어에 해당한다.
+ * 다른 인자들 역시 프로세스를 실행하는데 필요하므로, 함께 user stack에 담아줘야한다.
+ * arg_list라는 배열을 만들어서, 각 인자의 char*을 담아준다.
+ * 실행 프로그램 파일명은 arg_list[0]에 들어간다.
+ * 2번째 인자 이후로는 arg_list[i]에 들어간다.
+ * load ()가 성공적으로 이루어졌을 때, argument_stack 함수를 이용하여, user stack에 인자들을 저장한다.
+*/
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+// 유저가 입력한 명령어를 수행하도록 프로그램을 메모리에 적재하고 실행하는 함수. 
+// 여기에 파일 네임 인자로 받아서 저장(문자열) => 근데 실행 프로그램 파일과 옵션이 분리되지 않은 상황.
+  char *file_name = file_name_; // f_name은 문자열인데 위에서 (void *)로 넘겨받음! -> 문자열로 인식하기 위해서 char* 로 변환해줘야한다.
   struct intr_frame if_;
   bool success;
-  char cmd_name[500]; // 4KB
-  parse_filename(file_name, cmd_name);
+
+  int size = strlen(file_name);
+  char* parsed_fn[size + 1]; // 왜냐하면, size는 문자열의 길이이므로 '\0'을 삽입하기 위해서는 +1을 해주어야 한다.
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
+  /** 2
+	 * if_에는 intr_frame 내 구조체 멤버에 필요한 정보를 담는다. 
+	 * 여기서 intr_frame은 인터럽트 스택 프레임이다. 
+	 * 즉, 인터럽트 프레임은 인터럽트와 같은 요청이 들어와서 기존까지 실행 중이던 context(레지스터 값 포함)를 스택에 저장하기 위한 구조체이다!
+	 */
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (cmd_name, &if_.eip, &if_.esp);
-  if (success) {
-    construct_esp(file_name, &if_.esp);
-  }
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
-  sema_up(&thread_current()->parent->load_lock);
-  if (!success)
-    exit(-1); /* file close를 위해 변경 */
 
-   /* Start the user process by simulating a return from an
+  parse_filename(file_name, parsed_fn);
+  success = load (parsed_fn, &if_.eip, &if_.esp);
+// file_name, _if를 현재 프로세스에 load 한다.
+// success는 bool type이니까 load에 성공하면 1, 실패하면 0 반환.
+// 이때 file_name: f_name의 첫 문자열을 parsing하여 넘겨줘야 한다!
+
+  /* 파일 로드에 성공하면, setting_esp 을 진행한다. */
+  if (success) {
+    // printf("successed!\n");
+    setting_esp(file_name, &if_.esp);
+  }
+
+  /* If load failed, quit. */
+/** 2
+ * 어라, 근데 page를 할당해준 적이 없는데 왜 free를 하는 거지? 
+ * => palloc()은 load() 함수 내에서 file_name을 메모리에 올리는 과정에서 page allocation을 해준다. 
+ * 이때, 페이지를 할당해주는 걸 임시로 해주는 것.
+ * file_name: 프로그램 파일 받기 위해 만든 임시변수. 따라서 load 끝나면 메모리 반환.
+*/
+  palloc_free_page (file_name);
+  if (!success) {
+    // printf("not successed!\n");
+    thread_exit ();
+  }
+
+  /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
@@ -109,22 +140,24 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  struct list_elem* e;
-  struct thread* t = NULL;
-  int exit_status;
-  
-  for (e = list_begin(&(thread_current()->child)); e != list_end(&(thread_current()->child)); e = list_next(e)) {
-    t = list_entry(e, struct thread, child_elem);
-    if (child_tid == t->tid) {
-      sema_down(&(t->child_lock));
-      exit_status = t->exit_status;
-      list_remove(&(t->child_elem));
-      sema_up(&(t->mem_lock));
-      return exit_status;
-    }   
-  }
+  struct list_elem* elem;
+  int child_exit_status = -1;
 
-  return -1;
+  struct thread* child_thread = find_child_thread(child_tid);
+
+  if(child_thread == NULL) { // 자식이 아니라면 -1을 반환한다.
+    return child_exit_status;
+  }
+  else {
+    sema_down(&(child_thread->exit_sema)); // 자식 프로세스가 종료될 때 까지 대기한다. (process_exit에서 자식이 종료될 때 sema_up 해줄 것이다.)
+    child_exit_status = child_thread->exit_status;
+    /** 
+     * child_thread의 exit_status를 받기 위해서, child thread의 memory를 삭제하는 단계를 child thread_exit() 시가 아니라,
+     * 부모의 process_wait()가 재개된 시점으로 한다.. 맞나?
+     */
+    list_remove(&(child_thread->child_thread_list_elem)); // 자식이 종료됨을 알리는 'wait_sema' signal을 받으면 현재 스레드(부모)의 자식 리스트에서 제거한다.
+    return child_exit_status; // 자식의 exit_status를 반환한다.
+  }
 }
 
 /* Free the current process's resources. */
@@ -133,6 +166,15 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+/**
+ * 0 ; STDIN
+ * 1 ; STDOUT
+ * 2 ; STDERR
+ */
+  for(int i = 3; i < FDTABLE_SIZE; i++) {
+    process_file_close(i); // syscall close에서 fd를 받아 단일 파일을 close하는 동작이 필요하므로, 불가피하게 캡슐화
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -150,8 +192,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  sema_up(&(cur->child_lock));
-  sema_down(&(cur->mem_lock));
 }
 
 /* Sets up the CPU for running user code in the current
@@ -254,12 +294,13 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int i;
 
   /* Allocate and activate page directory. */
+  // 각 프로세스가 실행이 될 때, 각 프로세스에 해당하는 VM(virtual memory)이 만들어져야 하므로,
+	// 이를 위해 페이지 테이블 엔트리를 생성하는 과정이 우선된다.
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
 
-  // printf("file name is : %s\n", file_name);
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -465,6 +506,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
+/* esp (stack pointer)를 세팅하는 함수이다. */
 static bool
 setup_stack (void **esp) 
 {
@@ -476,7 +518,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
@@ -504,61 +546,115 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 void 
-parse_filename(char *src, char *dest) 
+parse_filename(char *src, char *dest)
 {
-  int i;
-  strlcpy(dest, src, strlen(src) + 1);
-  for (i=0; dest[i]!='\0' && dest[i] != ' '; i++);
-  dest[i] = '\0';
+    int i = 0;
+    while (src[i] != '\0' && src[i] != ' ') {
+        dest[i] = src[i];
+        i++;
+    }
+    dest[i] = '\0';
 }
 
 void 
-construct_esp(char *file_name, void **esp) 
+setting_esp(char* file_name, void** esp)
 {
-  char ** argv;
-  int argc;
-  int total_len;
-  char stored_file_name[256];
-  char *token;
-  char *last;
-  int i;
-  int len;
-  
-  strlcpy(stored_file_name, file_name, strlen(file_name) + 1);
-  token = strtok_r(stored_file_name, " ", &last);
-  argc = 0;
-  /* calculate argc */
-  while (token != NULL) {
-    argc += 1;
-    token = strtok_r(NULL, " ", &last);
-  }
-  argv = (char **)malloc(sizeof(char *) * argc);
-  /* store argv */
-  strlcpy(stored_file_name, file_name, strlen(file_name) + 1);
-  for (i = 0, token = strtok_r(stored_file_name, " ", &last); i < argc; i++, token = strtok_r(NULL, " ", &last)) {
-    len = strlen(token);
-    argv[i] = token;
+  char** argv;
+
+  int i = 0;
+  int argc = 0;
+
+  argc = parse_argc(file_name);
+  argv = (char** )malloc(sizeof(char* ) * argc);
+  parse_argv(argv, argc, file_name);
+
+ /*
+• argv[2][...]
+• argv[1][...]
+• argv[0][...]
+• <word-align> -- 데이터의 접근 속도를 빠르게 하기 위해서 4의 배수로 맞춘다.
+• NULL * 포인터
+• argv[2] * 포인터
+• argv[1] * 포인터
+• argv[0] * 포인터
+• argv **
+• argc int
+• return address
+ */
+
+  init_esp(argv, argc, esp);
+  // 이것을 안하면 메모리 누수가 발생할텐데, 하면 테스트가 fail됨.. parse_argv에서 동적할당을 안하고 할 수는 없나?
+  // free_argv(argv, argc);
+  // for (int i = 0; i < argc; i++) {
+  //   free(argv[i]); // 각 토큰에 대한 메모리 해제
+  // }
+  free(argv);
+}
+
+int
+parse_argc(char* file_name) {
+  char* token;
+  char* next_ptr;
+  int argc = 0;
+
+  char* dest_file_name[strlen(file_name) + 1];
+  strlcpy(dest_file_name, file_name, strlen(file_name) + 1);
+
+  token = strtok_r(dest_file_name, " ", &next_ptr);
+
+  while (token != NULL)
+  {
+    argc++;
+    token = strtok_r(NULL, " ", &next_ptr);
   }
 
-  /* push argv[argc-1] ~ argv[0] */
-  total_len = 0;
-  for (i = argc - 1; 0 <= i; i --) {
-    len = strlen(argv[i]);
-    *esp -= len + 1;
-    total_len += len + 1;
-    strlcpy(*esp, argv[i], len + 1);
-    argv[i] = *esp;
+  return argc;
+}
+
+void
+parse_argv(char** argv, int argc, char* file_name) {
+  char* token;
+  char* next_ptr;
+
+  int i = 0;
+
+  char* dest_file_name = malloc(strlen(file_name) + 1);
+  strlcpy(dest_file_name, file_name, strlen(file_name) + 1);
+
+  for(token = strtok_r(dest_file_name, " ", &next_ptr); i < argc; i++, token = strtok_r(NULL, " ", &next_ptr)) {
+    argv[i] = malloc(strlen(token) + 1);
+    strlcpy(argv[i], token, strlen(token) + 1);
   }
+
+  free(dest_file_name);
+}
+
+void init_esp(char** argv, char* argc, void** esp) {
+  int i = 0;
+  int argv_len = 0;
+  int sum_argv_len = 0;
+  /* push argv[argc-1] ~ argv[0] */
+  for (i = argc; i > 0; i--) {
+    argv_len = strlen(argv[i-1]); // argc = 3이면 argv[2]부터 넣는다.
+    *esp = *esp - (argv_len + 1);
+    sum_argv_len = sum_argv_len + (argv_len + 1);
+    strlcpy(*esp, argv[i-1], argv_len + 1);
+    argv[i-1] = *esp;
+  }
+
   /* push word align */
-  *esp -= total_len % 4 != 0 ? 4 - (total_len % 4) : 0;
+  if (sum_argv_len % 4 != 0) *esp -= 4 - (sum_argv_len % 4);
+
   /* push NULL */
   *esp -= 4;
   **(uint32_t **)esp = 0;
+
   /* push address of argv[argc-1] ~ argv[0] */
-  for (i = argc - 1; 0 <= i; i--) {
+  for (i = argc - 1; i >= 0; i--) {
     *esp -= 4;
     **(uint32_t **)esp = argv[i];
   }
+
   /* push address of argv */
   *esp -= 4;
   **(uint32_t **)esp = *esp + 4;
@@ -570,7 +666,26 @@ construct_esp(char *file_name, void **esp)
   /* push return address */
   *esp -= 4;
   **(uint32_t **)esp = 0;
+}
 
-  // hex_dump(*esp, *esp, 100, 1);
-  free(argv);
+// void free_argv(char** argv, int argc) {
+//   for (int i = 0; i < argc; i++) {
+//     free(argv[i]); // 각 토큰에 대한 메모리 해제
+//   }
+//   free(argv);
+// }
+
+void process_file_close(int fd_idx) {
+  struct thread* t = thread_current();
+
+  // process_exit에서는 애초에 for문에서 걸러져서 들어오지만, close syscall에서는 fd를 받아 단일 파일에 대해 수행하므로, 검토 조건 필요하다.
+  if(fd_idx < 3 || fd_idx >= FDTABLE_SIZE) {
+    return;
+  }
+
+  if(t->fd_table[fd_idx] != NULL) {
+    file_close(t->fd_table[fd_idx]);
+  }
+
+  return;
 }
