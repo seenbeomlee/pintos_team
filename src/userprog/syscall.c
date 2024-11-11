@@ -81,22 +81,22 @@ exit (int status)
 {
   /* document의 요구사항에 따라, 스레드가 종료될 때에는 종료 메세지를 출력한다. */
   struct thread* t = thread_current();
-  t->exit_status = status;
-  printf("%s: exit(%d)\n", thread_name(), t->exit_status);
-  thread_exit ();
+  t->exit_status = status; // 현재 스레드의 exit_status에 종료 상태 코드를 저장
+  printf("%s: exit(%d)\n", thread_name(), t->exit_status); // 종료 메세지 출력
+  thread_exit (); // 자원 해제 및 스레드 스케줄러에 제어 넘기기
 }
 
 pid_t
 exec(const char *cmd_line) 
 {
   // 만약 프로그램이 프로세스를 로드하지 못하거나, 다른 이유로 돌리지 못하게 되면 exit_status == -1을 반환하며 프로세스가 종료된다.
-  return process_execute(cmd_line);
+  return process_execute(cmd_line); // 지정된 파일을 실행하는 새 프로세스를 생성하고, 그 프로세스의 ID를 반환한다.
 }
 
 int
 wait(pid_t pid)
 {
-  return process_wait(pid);
+  return process_wait(pid); // 특정 자식 프로세스의 종료를 기다리고 
 }
 
 int 

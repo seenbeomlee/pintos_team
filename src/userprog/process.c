@@ -637,6 +637,8 @@ void init_esp(char** argv, char* argc, void** esp) {
   int argv_len = 0;
   int sum_argv_len = 0;
   /* push argv[argc-1] ~ argv[0] */
+
+  // 인자를 역순으로 스택에 복사
   for (i = argc; i > 0; i--) {
     argv_len = strlen(argv[i-1]); // argc = 3이면 argv[2]부터 넣는다.
     *esp = *esp - (argv_len + 1);
@@ -646,19 +648,23 @@ void init_esp(char** argv, char* argc, void** esp) {
   }
 
   /* push word align */
+  // 스택 포인터가 4바이트 배수가 되도록 감소시키고, 정렬을 위해 추가된 바이트에 0을 채움
   if (sum_argv_len % 4 != 0) *esp -= 4 - (sum_argv_len % 4);
 
   /* push NULL */
+  // 인자 주소 리스트의 끝을 표시
   *esp -= 4;
   **(uint32_t **)esp = 0;
 
   /* push address of argv[argc-1] ~ argv[0] */
+  // 인자 주소 넣기
   for (i = argc - 1; i >= 0; i--) {
     *esp -= 4;
     **(uint32_t **)esp = argv[i];
   }
 
   /* push address of argv */
+  // 인자 주소 리스트의 주소를 표시
   *esp -= 4;
   **(uint32_t **)esp = *esp + 4;
 
@@ -667,6 +673,7 @@ void init_esp(char** argv, char* argc, void** esp) {
   **(uint32_t **)esp = argc;
   
   /* push return address */
+  // 리턴 주소를 0으로 설정하여 스택의 최상단에 삽입. 이는 main 함수 종료 후 돌아갈 주소가 없음을 나타냄.
   *esp -= 4;
   **(uint32_t **)esp = 0;
 }
