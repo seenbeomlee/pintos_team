@@ -100,8 +100,15 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+
+/** 2
+ * process_exit()
+ */
     int exit_status;                    /* exit 호출 시 종료 상태 */
 
+/** 2
+ * hierarchilcal process structure
+ */
     /* parent thread */
     struct thread* parent_thread_pointer;
     /* child list element */
@@ -114,6 +121,13 @@ struct thread
     /* wait semaphore, 자식 프로세스 생성 대기 */
     struct semaphore wait_sema;
 
+ /** 2 file descriptor
+ * 각 thread는 고유한 file descriptor table을 가지고 있어야 한다. --- 미구현
+ * [0] == standard input
+ * [1] == standard output
+ * [2] == standard error
+ * 따라서, 파일 디스크립터는 항상 3번부터 할당이 된다.
+ */
     struct file* fd_table[FDTABLE_SIZE];    
 #endif
 
